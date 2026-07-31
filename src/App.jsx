@@ -18,20 +18,19 @@ import {
   MinusCircle, 
   Package, 
   TrendingUp, 
-  FileText, 
   History,
   AlertCircle,
   Plus
 } from 'lucide-react';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDUQaX...",
+  apiKey: "AIzaSyDUQaXZvuBAFnkPy04XxLBTSVWYiGC3L80",
   authDomain: "app-herbicida-e-gerais.firebaseapp.com",
   projectId: "app-herbicida-e-gerais",
-  storageBucket: "app-herbicida-e-gerais.appspot.com",
-  messagingSenderId: "708858351613",
-  appId: "1:708858351613:web:...",
-  measurementId: "G-YW..."
+  storageBucket: "app-herbicida-e-gerais.firebasestorage.app",
+  messagingSenderId: "708858351646",
+  appId: "1:708858351646:web:785e4de5b67867fbb09e0f",
+  measurementId: "G-YMYP0286KD"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -117,7 +116,7 @@ export default function App() {
 
     setQtdMov('');
     setObsMov('');
-    alert("Movimentação registrada!");
+    alert("Movimentação registrada com sucesso!");
   };
 
   const handleAddProduto = async (e) => {
@@ -134,7 +133,7 @@ export default function App() {
 
     setNovoNome('');
     setNovoValor('');
-    alert("Produto cadastrado!");
+    alert("Produto cadastrado com sucesso!");
   };
 
   const valorTotalEstoque = produtos.reduce((acc, p) => acc + ((p.qtdEstoque || 0) * (p.valorUnitario || 0)), 0);
@@ -190,13 +189,13 @@ export default function App() {
             </div>
 
             {produtos.length === 0 ? (
-              <div className="bg-white p-8 rounded-xl text-center text-gray-400 border border-gray-200">
+              <div className="bg-white p-8 rounded-xl text-center text-gray-400 border border-gray-200 shadow-sm">
                 <p className="text-sm mb-3">Nenhum produto cadastrado ainda no banco.</p>
                 <button 
                   onClick={cadastrarIniciais} 
-                  className="bg-emerald-600 text-white text-xs font-bold px-4 py-2 rounded-lg"
+                  className="bg-emerald-600 text-white text-xs font-bold px-4 py-2.5 rounded-lg shadow"
                 >
-                  Clique para carregar 24D, Roundup, etc.
+                  Carregar 24D, Roundup, Hexazinona e Calist
                 </button>
               </div>
             ) : (
