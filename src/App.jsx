@@ -158,7 +158,7 @@ export default function App() {
           <div className="flex items-center gap-2">
             <Droplet className="w-8 h-8 text-emerald-300" />
             <div>
-              <h1 className="text-lg font-black tracking-wider uppercase">CONTROLE DE ESTOQUE</h1>
+              <h1 className="text-lg font-black tracking-wider uppercase">RELATÓRIOS HERBICIDA AGROBRAZ</h1>
               <p className="text-[11px] text-emerald-200 font-medium">Herbicidas & Defensivos (Nuvem Firebase)</p>
             </div>
           </div>
