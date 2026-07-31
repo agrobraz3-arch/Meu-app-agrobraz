@@ -19,7 +19,9 @@ import {
   Package, 
   TrendingUp, 
   History,
-  AlertCircle
+  AlertTriangle,
+  Pencil,
+  FileText
 } from 'lucide-react';
 
 const firebaseConfig = {
@@ -36,8 +38,8 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 const SEED_PRODUCTS = [
-  { id: "p1", nome: "24D", valorUnitario: 40, minimo: 3, unidade: "L", qtdEstoque: 0 },
-  { id: "p2", nome: "HEXAZINONA D", valorUnitario: 310, minimo: 3, unidade: "Kg", qtdEstoque: 0 },
+  { id: "p1", nome: "24D", valorUnitario: 40, minimo: 3, unidade: "L", qtdEstoque: 20 },
+  { id: "p2", nome: "HEXAZINONA D", valorUnitario: 310, minimo: 3, unidade: "Kg", qtdEstoque: 50 },
   { id: "p3", nome: "ROUNDUP", valorUnitario: 40, minimo: 3, unidade: "gl", qtdEstoque: 0 },
   { id: "p4", nome: "CALIST", valorUnitario: 115, minimo: 3, unidade: "L", qtdEstoque: 0 }
 ];
@@ -115,7 +117,7 @@ export default function App() {
 
     setQtdMov('');
     setObsMov('');
-    alert("Movimentação registrada com sucesso!");
+    alert("Movimentação registrada!");
   };
 
   const handleAddProduto = async (e) => {
@@ -132,11 +134,12 @@ export default function App() {
 
     setNovoNome('');
     setNovoValor('');
-    alert("Produto cadastrado com sucesso!");
+    alert("Produto cadastrado!");
   };
 
   const valorTotalEstoque = produtos.reduce((acc, p) => acc + ((p.qtdEstoque || 0) * (p.valorUnitario || 0)), 0);
   const totalItens = produtos.reduce((acc, p) => acc + (p.qtdEstoque || 0), 0);
+  const produtosAlerta = produtos.filter(p => (p.qtdEstoque || 0) <= (p.minimo || 3));
 
   if (loading) {
     return (
@@ -148,59 +151,119 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 text-gray-800 pb-20">
-      <header className="bg-emerald-800 text-white p-4 shadow-lg">
-        <div className="max-w-md mx-auto flex items-center gap-3">
-          <Droplet className="w-8 h-8 text-emerald-300" />
-          <div>
-            <h1 className="text-xl font-bold tracking-wide">CONTROLE DE ESTOQUE</h1>
-            <p className="text-xs text-emerald-200">Herbicidas & Defensivos (Nuvem Firebase)</p>
+    <div className="min-h-screen bg-[#f7f9f6] text-gray-800 pb-20">
+      {/* TOPO */}
+      <header className="bg-[#14532d] text-white p-4 shadow-md">
+        <div className="max-w-md mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Droplet className="w-8 h-8 text-emerald-300" />
+            <div>
+              <h1 className="text-lg font-black tracking-wider uppercase">CONTROLE DE ESTOQUE</h1>
+              <p className="text-[11px] text-emerald-200 font-medium">Herbicidas & Defensivos (Nuvem Firebase)</p>
+            </div>
           </div>
+          {produtosAlerta.length > 0 && (
+            <div className="bg-[#78350f]/80 text-amber-200 px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1 border border-amber-600/50">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+              <span>{produtosAlerta.length}</span>
+            </div>
+          )}
         </div>
       </header>
 
       <main className="max-w-md mx-auto p-4 space-y-4">
-        {/* RESUMO */}
+        {/* CARDS RESUMO */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex justify-between items-center">
           <div>
-            <p className="text-xs text-gray-500 font-bold uppercase">Valor em Estoque</p>
-            <p className="text-xl font-extrabold text-emerald-700">{fmtBRL(valorTotalEstoque)}</p>
+            <p className="text-[11px] font-extrabold text-gray-500 uppercase tracking-wide">VALOR EM ESTOQUE</p>
+            <p className="text-xl font-black text-[#14532d] mt-0.5">{fmtBRL(valorTotalEstoque)}</p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-gray-500 font-bold uppercase">Total de Itens</p>
-            <p className="text-xl font-extrabold text-amber-600">{totalItens} <span className="text-xs font-normal text-gray-500">itens</span></p>
+            <p className="text-[11px] font-extrabold text-gray-500 uppercase tracking-wide">TOTAL DE ITENS</p>
+            <p className="text-xl font-black text-[#c2410c] mt-0.5">{totalItens} <span className="text-xs font-normal text-gray-500">itens</span></p>
           </div>
         </div>
+
+        {/* CAIXA DE ALERTA DE REPOSIÇÃO */}
+        {produtosAlerta.length > 0 && (
+          <div className="bg-[#fff7ed] border border-[#ea580c] rounded-xl p-3 shadow-sm flex items-start gap-3">
+            <AlertTriangle className="w-6 h-6 text-[#ea580c] shrink-0 mt-1" />
+            <div>
+              <p className="text-xs font-black text-[#c2410c]">
+                ⚠️ Por favor, repor estoque dos produtos destacados abaixo!
+              </p>
+              <p className="text-[11px] text-[#9a3412] mt-0.5">
+                Existe(m) <strong>{produtosAlerta.length} produto(s)</strong> com 3 unidades ou menos.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* ABA ESTOQUE */}
         {activeTab === 'estoque' && (
           <div className="space-y-3">
-            <h2 className="text-xs font-bold text-emerald-900 uppercase tracking-wider">
+            <h2 className="text-xs font-black text-[#14532d] uppercase tracking-wider">
               QUANTIDADE EM ESTOQUE (MÍNIMO: 3 UN/PRODUTO)
             </h2>
 
-            {produtos.map(p => {
-              const alerta = (p.qtdEstoque || 0) <= (p.minimo || 3);
-              return (
-                <div key={p.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex justify-between items-center">
-                  <div>
-                    <h3 className="font-bold text-gray-800 text-base">{p.nome}</h3>
-                    <p className="text-xs text-gray-500">Preço: {fmtBRL(p.valorUnitario)} / {p.unidade}</p>
-                    {alerta && (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded mt-1">
-                        <AlertCircle className="w-3 h-3" /> Abaixo do mínimo ({p.minimo} {p.unidade})
-                      </span>
-                    )}
+            {/* GRID DE CARDS EM 3 COLUNAS */}
+            <div className="grid grid-cols-3 gap-2.5">
+              {produtos.map(p => {
+                const alerta = (p.qtdEstoque || 0) <= (p.minimo || 3);
+                return (
+                  <div 
+                    key={p.id} 
+                    className={`bg-white rounded-xl p-2.5 shadow-sm border flex flex-col justify-between relative min-h-[170px] ${
+                      alerta ? 'border-[#f97316] bg-[#fff7ed]' : 'border-gray-200'
+                    }`}
+                  >
+                    {/* BOTAO EDITAR */}
+                    <button 
+                      onClick={() => { setProdSel(p.id); setActiveTab('movimentar'); }}
+                      className="absolute top-1.5 right-1.5 w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 hover:text-gray-800"
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
+
+                    {/* TEXTO REPOR ESTOQUE SE ABAIXO DO MINIMO */}
+                    <div>
+                      {alerta && (
+                        <p className="text-[9px] font-black text-[#c2410c] uppercase tracking-tighter flex items-center gap-0.5 leading-none mb-1">
+                          ⚠️ REPOR ESTOQUE
+                        </p>
+                      )}
+                      <div className="text-center mt-1">
+                        <span className={`text-2xl font-black ${alerta ? 'text-[#ea580c]' : 'text-[#15803d]'}`}>
+                          {p.qtdEstoque || 0}
+                        </span>
+                        <span className="text-[10px] font-bold text-gray-500 ml-0.5">{p.unidade}</span>
+                      </div>
+                    </div>
+
+                    {/* DESENHO DO GALÃO / RECIPIENTE */}
+                    <div className="my-2 flex justify-center">
+                      <div className={`w-10 h-12 rounded-lg border-2 flex items-end justify-center overflow-hidden relative ${
+                        alerta ? 'border-gray-300 bg-emerald-50' : 'border-[#15803d] bg-emerald-100'
+                      }`}>
+                        <div 
+                          className={`w-full transition-all duration-500 ${alerta ? 'bg-emerald-200' : 'bg-[#15803d]'}`} 
+                          style={{ height: `${Math.min(100, ((p.qtdEstoque || 0) / 20) * 100)}%` }} 
+                        />
+                        <div className="absolute top-1 w-4 h-1 border-b border-dashed border-gray-400" />
+                      </div>
+                    </div>
+
+                    {/* NOME E MINIMO */}
+                    <div className="text-center">
+                      <h3 className="font-extrabold text-gray-800 text-xs leading-tight truncate">{p.nome}</h3>
+                      <p className={`text-[10px] font-bold mt-0.5 ${alerta ? 'text-[#c2410c]' : 'text-gray-400'}`}>
+                        mín: {p.minimo || 3} {p.unidade}
+                      </p>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <span className={`text-2xl font-black ${alerta ? 'text-amber-600' : 'text-emerald-600'}`}>
-                      {p.qtdEstoque || 0}
-                    </span>
-                    <span className="text-xs text-gray-400 ml-1">{p.unidade}</span>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -208,7 +271,6 @@ export default function App() {
         {activeTab === 'movimentar' && (
           <form onSubmit={handleMovimentar} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 space-y-4">
             <h2 className="font-bold text-gray-700">Registrar Entrada / Saída</h2>
-            
             <div>
               <label className="block text-xs font-bold text-gray-500 mb-1">Produto</label>
               <select 
@@ -223,7 +285,6 @@ export default function App() {
                 ))}
               </select>
             </div>
-
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
@@ -240,7 +301,6 @@ export default function App() {
                 <PlusCircle className="w-4 h-4" /> Entrada
               </button>
             </div>
-
             <div>
               <label className="block text-xs font-bold text-gray-500 mb-1">Quantidade</label>
               <input 
@@ -252,7 +312,6 @@ export default function App() {
                 required 
               />
             </div>
-
             <div>
               <label className="block text-xs font-bold text-gray-500 mb-1">Observação (Opcional)</label>
               <input 
@@ -263,8 +322,7 @@ export default function App() {
                 className="w-full p-2.5 border rounded-lg bg-gray-50 text-sm"
               />
             </div>
-
-            <button type="submit" className="w-full bg-emerald-600 text-white font-bold py-3 rounded-lg text-sm shadow">
+            <button type="submit" className="w-full bg-[#15803d] text-white font-bold py-3 rounded-lg text-sm shadow">
               Confirmar Movimentação
             </button>
           </form>
@@ -310,7 +368,7 @@ export default function App() {
                 </select>
               </div>
             </div>
-            <button type="submit" className="w-full bg-emerald-600 text-white font-bold py-3 rounded-lg text-sm shadow">
+            <button type="submit" className="w-full bg-[#15803d] text-white font-bold py-3 rounded-lg text-sm shadow">
               Salvar Produto
             </button>
           </form>
@@ -344,19 +402,23 @@ export default function App() {
 
       {/* MENU INFERIOR */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around p-2 max-w-md mx-auto shadow-lg z-50">
-        <button onClick={() => setActiveTab('estoque')} className={`flex flex-col items-center gap-1 ${activeTab === 'estoque' ? 'text-emerald-700 font-bold' : 'text-gray-400'}`}>
+        <button onClick={() => setActiveTab('estoque')} className={`flex flex-col items-center gap-1 ${activeTab === 'estoque' ? 'text-[#15803d] font-bold' : 'text-gray-400'}`}>
           <Package className="w-5 h-5" />
           <span className="text-[10px]">Estoque</span>
         </button>
-        <button onClick={() => setActiveTab('movimentar')} className={`flex flex-col items-center gap-1 ${activeTab === 'movimentar' ? 'text-emerald-700 font-bold' : 'text-gray-400'}`}>
+        <button onClick={() => setActiveTab('movimentar')} className={`flex flex-col items-center gap-1 ${activeTab === 'movimentar' ? 'text-[#15803d] font-bold' : 'text-gray-400'}`}>
           <TrendingUp className="w-5 h-5" />
           <span className="text-[10px]">Movimentar</span>
         </button>
-        <button onClick={() => setActiveTab('produtos')} className={`flex flex-col items-center gap-1 ${activeTab === 'produtos' ? 'text-emerald-700 font-bold' : 'text-gray-400'}`}>
+        <button onClick={() => setActiveTab('relatorios')} className={`flex flex-col items-center gap-1 ${activeTab === 'relatorios' ? 'text-[#15803d] font-bold' : 'text-gray-400'}`}>
+          <FileText className="w-5 h-5" />
+          <span className="text-[10px]">Relatórios</span>
+        </button>
+        <button onClick={() => setActiveTab('produtos')} className={`flex flex-col items-center gap-1 ${activeTab === 'produtos' ? 'text-[#15803d] font-bold' : 'text-gray-400'}`}>
           <PlusCircle className="w-5 h-5" />
           <span className="text-[10px]">Produtos</span>
         </button>
-        <button onClick={() => setActiveTab('historico')} className={`flex flex-col items-center gap-1 ${activeTab === 'historico' ? 'text-emerald-700 font-bold' : 'text-gray-400'}`}>
+        <button onClick={() => setActiveTab('historico')} className={`flex flex-col items-center gap-1 ${activeTab === 'historico' ? 'text-[#15803d] font-bold' : 'text-gray-400'}`}>
           <History className="w-5 h-5" />
           <span className="text-[10px]">Histórico</span>
         </button>
