@@ -19,8 +19,7 @@ import {
   Package, 
   TrendingUp, 
   History,
-  AlertCircle,
-  Plus
+  AlertCircle
 } from 'lucide-react';
 
 const firebaseConfig = {
@@ -64,9 +63,15 @@ export default function App() {
   const [novaUnidade, setNovaUnidade] = useState('L');
 
   useEffect(() => {
-    const unsubProd = onSnapshot(collection(db, 'produtos'), (snapshot) => {
-      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setProdutos(list);
+    const unsubProd = onSnapshot(collection(db, 'produtos'), async (snapshot) => {
+      if (snapshot.empty) {
+        for (const p of SEED_PRODUCTS) {
+          await setDoc(doc(db, 'produtos', p.id), p);
+        }
+      } else {
+        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setProdutos(list);
+      }
       setLoading(false);
     });
 
@@ -81,12 +86,6 @@ export default function App() {
       unsubHist();
     };
   }, []);
-
-  const cadastrarIniciais = async () => {
-    for (const p of SEED_PRODUCTS) {
-      await setDoc(doc(db, 'produtos', p.id), p);
-    }
-  };
 
   const handleMovimentar = async (e) => {
     e.preventDefault();
@@ -154,7 +153,7 @@ export default function App() {
         <div className="max-w-md mx-auto flex items-center gap-3">
           <Droplet className="w-8 h-8 text-emerald-300" />
           <div>
-            <h1 className="text-xl font-bold tracking-wide">CONTROLE DE ESTOQUE - AGROBRAZ</h1>
+            <h1 className="text-xl font-bold tracking-wide">CONTROLE DE ESTOQUE</h1>
             <p className="text-xs text-emerald-200">Herbicidas & Defensivos (Nuvem Firebase)</p>
           </div>
         </div>
@@ -176,52 +175,32 @@ export default function App() {
         {/* ABA ESTOQUE */}
         {activeTab === 'estoque' && (
           <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <h2 className="text-sm font-bold text-gray-600 uppercase">Quantidade em Estoque</h2>
-              {produtos.length === 0 && (
-                <button 
-                  onClick={cadastrarIniciais} 
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 shadow"
-                >
-                  <Plus className="w-4 h-4" /> Cadastrar Produtos Iniciais
-                </button>
-              )}
-            </div>
+            <h2 className="text-xs font-bold text-emerald-900 uppercase tracking-wider">
+              QUANTIDADE EM ESTOQUE (MÍNIMO: 3 UN/PRODUTO)
+            </h2>
 
-            {produtos.length === 0 ? (
-              <div className="bg-white p-8 rounded-xl text-center text-gray-400 border border-gray-200 shadow-sm">
-                <p className="text-sm mb-3">Nenhum produto cadastrado ainda no banco.</p>
-                <button 
-                  onClick={cadastrarIniciais} 
-                  className="bg-emerald-600 text-white text-xs font-bold px-4 py-2.5 rounded-lg shadow"
-                >
-                  Carregar 24D, Roundup, Hexazinona e Calist
-                </button>
-              </div>
-            ) : (
-              produtos.map(p => {
-                const alerta = (p.qtdEstoque || 0) <= (p.minimo || 3);
-                return (
-                  <div key={p.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex justify-between items-center">
-                    <div>
-                      <h3 className="font-bold text-gray-800 text-base">{p.nome}</h3>
-                      <p className="text-xs text-gray-500">Preço: {fmtBRL(p.valorUnitario)} / {p.unidade}</p>
-                      {alerta && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded mt-1">
-                          <AlertCircle className="w-3 h-3" /> Abaixo do mínimo ({p.minimo} {p.unidade})
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-right">
-                      <span className={`text-2xl font-black ${alerta ? 'text-amber-600' : 'text-emerald-600'}`}>
-                        {p.qtdEstoque || 0}
+            {produtos.map(p => {
+              const alerta = (p.qtdEstoque || 0) <= (p.minimo || 3);
+              return (
+                <div key={p.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex justify-between items-center">
+                  <div>
+                    <h3 className="font-bold text-gray-800 text-base">{p.nome}</h3>
+                    <p className="text-xs text-gray-500">Preço: {fmtBRL(p.valorUnitario)} / {p.unidade}</p>
+                    {alerta && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded mt-1">
+                        <AlertCircle className="w-3 h-3" /> Abaixo do mínimo ({p.minimo} {p.unidade})
                       </span>
-                      <span className="text-xs text-gray-400 ml-1">{p.unidade}</span>
-                    </div>
+                    )}
                   </div>
-                );
-              })
-            )}
+                  <div className="text-right">
+                    <span className={`text-2xl font-black ${alerta ? 'text-amber-600' : 'text-emerald-600'}`}>
+                      {p.qtdEstoque || 0}
+                    </span>
+                    <span className="text-xs text-gray-400 ml-1">{p.unidade}</span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 
