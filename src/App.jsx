@@ -1,29 +1,43 @@
-import React, { useState, useEffect } from 'react';
-import { initializeApp } from 'firebase/app';
-import { 
-  getFirestore, 
-  collection, 
-  onSnapshot, 
-  doc, 
-  updateDoc, 
-  addDoc, 
-  serverTimestamp,
-  query,
-  orderBy,
-  setDoc
-} from 'firebase/firestore';
-import { 
-  Droplet, 
-  PlusCircle, 
-  MinusCircle, 
-  Package, 
-  TrendingUp, 
-  History,
-  AlertTriangle,
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import {
+  Droplets,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  PackagePlus,
+  ListOrdered,
+  Trash2,
   Pencil,
-  FileText
-} from 'lucide-react';
+  TriangleAlert,
+  Plus,
+  X,
+  Gauge,
+  Check,
+  FileText,
+  Download,
+  Printer,
+  Calendar,
+  CreditCard,
+  User,
+  Truck,
+  Search,
+  MessageCircle,
+} from "lucide-react";
 
+// Importações do Firebase (v9+ modular)
+import { initializeApp } from "firebase/app";
+import {
+  getFirestore,
+  collection,
+  onSnapshot,
+  doc,
+  setDoc,
+  addDoc,
+  deleteDoc,
+} from "firebase/firestore";
+
+// =========================================================================
+// CONFIGURAÇÃO DO SEU FIREBASE (Sincronizado)
+// =========================================================================
 const firebaseConfig = {
   apiKey: "AIzaSyDUQaXZvuBAFnkPy04XxLBTSVWYiGC3L80",
   authDomain: "app-herbicida-e-gerais.firebaseapp.com",
@@ -34,395 +48,1665 @@ const firebaseConfig = {
   measurementId: "G-YMYP0286KD"
 };
 
+// Inicializa Firebase & Firestore
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 const SEED_PRODUCTS = [
-  { id: "p1", nome: "24D", valorUnitario: 40, minimo: 3, unidade: "L", qtdEstoque: 20 },
-  { id: "p2", nome: "HEXAZINONA D", valorUnitario: 310, minimo: 3, unidade: "Kg", qtdEstoque: 50 },
-  { id: "p3", nome: "ROUNDUP", valorUnitario: 40, minimo: 3, unidade: "gl", qtdEstoque: 0 },
-  { id: "p4", nome: "CALIST", valorUnitario: 115, minimo: 3, unidade: "L", qtdEstoque: 0 }
+  { id: "p1", nome: "24D", valorUnitario: 40, minimo: 3, unidade: "L" },
+  { id: "p2", nome: "HEXAZINONA D", valorUnitario: 310, minimo: 3, unidade: "Kg" },
+  { id: "p3", nome: "ROUNDUP", valorUnitario: 40, minimo: 3, unidade: "gl" },
+  { id: "p4", nome: "CALIST", valorUnitario: 115, minimo: 3, unidade: "L" },
 ];
 
-const fmtBRL = (n) => (n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+function todayISO() {
+  const d = new Date();
+  return d.toISOString().slice(0, 10);
+}
 
-export default function App() {
-  const [activeTab, setActiveTab] = useState('estoque');
+function fmtBRL(n) {
+  return (n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function fmtDate(iso) {
+  if (!iso) return "-";
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+const C = {
+  bg: "#F4F7F4",
+  surface: "#FFFFFF",
+  surfaceRaised: "#E8EFE9",
+  line: "#C0D1C2",
+  textDark: "#1B2E1E",
+  textMuted: "#4A614E",
+  greenHeader: "#1E5E2F",
+  orangeAlert: "#E65100",
+  whatsappGreen: "#25D366",
+  orangeSoft: "#FFF3E0",
+  greenSoft: "#E8F5E9",
+};
+
+export default function EstoqueApp() {
   const [produtos, setProdutos] = useState([]);
-  const [historico, setHistorico] = useState([]);
+  const [movs, setMovs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState("estoque");
+  const [toast, setToast] = useState(null);
 
-  // Formulário Movimentação
-  const [prodSel, setProdSel] = useState('');
-  const [tipoMov, setTipoMov] = useState('SAIDA');
-  const [qtdMov, setQtdMov] = useState('');
-  const [obsMov, setObsMov] = useState('');
+  const showToast = useCallback((msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2200);
+  }, []);
 
-  // Formulário Novo Produto
-  const [novoNome, setNovoNome] = useState('');
-  const [novoValor, setNovoValor] = useState('');
-  const [novoMinimo, setNovoMinimo] = useState(3);
-  const [novaUnidade, setNovaUnidade] = useState('L');
-
+  // Escuta em tempo real PRODUTOS
   useEffect(() => {
-    const unsubProd = onSnapshot(collection(db, 'produtos'), async (snapshot) => {
+    const colRef = collection(db, "produtos");
+    const unsubscribe = onSnapshot(colRef, async (snapshot) => {
       if (snapshot.empty) {
-        for (const p of SEED_PRODUCTS) {
-          await setDoc(doc(db, 'produtos', p.id), p);
+        for (const prod of SEED_PRODUCTS) {
+          await setDoc(doc(db, "produtos", prod.id), prod);
         }
       } else {
-        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const list = [];
+        snapshot.forEach((docSnap) => {
+          list.push({ id: docSnap.id, ...docSnap.data() });
+        });
         setProdutos(list);
       }
       setLoading(false);
+    }, (err) => {
+      console.error("Erro ao carregar produtos do Firebase:", err);
+      setLoading(false);
     });
 
-    const qHist = query(collection(db, 'historico'), orderBy('data', 'desc'));
-    const unsubHist = onSnapshot(qHist, (snapshot) => {
-      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setHistorico(list);
-    });
-
-    return () => {
-      unsubProd();
-      unsubHist();
-    };
+    return () => unsubscribe();
   }, []);
 
-  const handleMovimentar = async (e) => {
-    e.preventDefault();
-    if (!prodSel || !qtdMov || Number(qtdMov) <= 0) return;
+  // Escuta em tempo real MOVIMENTAÇÕES
+  useEffect(() => {
+    const colRef = collection(db, "movimentacoes");
+    const unsubscribe = onSnapshot(colRef, (snapshot) => {
+      const list = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      list.sort((a, b) => (b.data || "").localeCompare(a.data || ""));
+      setMovs(list);
+    }, (err) => {
+      console.error("Erro ao carregar movimentações:", err);
+    });
 
-    const prod = produtos.find(p => p.id === prodSel);
-    if (!prod) return;
+    return () => unsubscribe();
+  }, []);
 
-    const qtd = Number(qtdMov);
-    const novaQtd = tipoMov === 'ENTRADA' ? (prod.qtdEstoque || 0) + qtd : (prod.qtdEstoque || 0) - qtd;
-
-    if (novaQtd < 0) {
-      alert("Quantidade em estoque insuficiente!");
-      return;
+  const addMovimentacao = useCallback(async (novaMov) => {
+    try {
+      await addDoc(collection(db, "movimentacoes"), novaMov);
+    } catch (e) {
+      console.error("Erro ao adicionar no Firebase:", e);
+      showToast("Erro ao salvar no banco!");
     }
+  }, [showToast]);
 
-    await updateDoc(doc(db, 'produtos', prodSel), { qtdEstoque: novaQtd });
-    await addDoc(collection(db, 'historico'), {
-      produtoId: prodSel,
-      produtoNome: prod.nome,
-      tipo: tipoMov,
-      quantidade: qtd,
-      unidade: prod.unidade,
-      observacao: obsMov,
-      data: serverTimestamp()
+  const removeMovimentacao = useCallback(async (id) => {
+    try {
+      await deleteDoc(doc(db, "movimentacoes", id));
+      showToast("Movimentação removida!");
+    } catch (e) {
+      console.error(e);
+    }
+  }, [showToast]);
+
+  const saveProduto = useCallback(async (prodData, id = null) => {
+    try {
+      if (id) {
+        await setDoc(doc(db, "produtos", id), prodData, { merge: true });
+        showToast("Produto atualizado!");
+      } else {
+        const newRef = doc(collection(db, "produtos"));
+        await setDoc(newRef, { ...prodData, id: newRef.id });
+        showToast("Produto adicionado!");
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, [showToast]);
+
+  const removeProduto = useCallback(async (id) => {
+    try {
+      await deleteDoc(doc(db, "produtos", id));
+      showToast("Produto removido!");
+    } catch (e) {
+      console.error(e);
+    }
+  }, [showToast]);
+
+  const estoques = useMemo(() => {
+    if (!produtos || !movs) return {};
+    const map = {};
+    produtos.forEach((p) => (map[p.id] = 0));
+    movs.forEach((m) => {
+      if (!(m.produtoId in map)) map[m.produtoId] = 0;
+      map[m.produtoId] += m.tipo === "entrada" ? Number(m.quantidade) : -Number(m.quantidade);
     });
+    return map;
+  }, [produtos, movs]);
 
-    setQtdMov('');
-    setObsMov('');
-    alert("Movimentação registrada!");
-  };
+  const alertas = useMemo(() => {
+    if (!produtos) return [];
+    return produtos.filter((p) => (estoques[p.id] ?? 0) <= (p.minimo ?? 3));
+  }, [produtos, estoques]);
 
-  const handleAddProduto = async (e) => {
-    e.preventDefault();
-    if (!novoNome) return;
+  const handleAjustarEstoque = useCallback(
+    async (produtoId, novaQtd) => {
+      const qtdAtual = estoques[produtoId] || 0;
+      const dif = novaQtd - qtdAtual;
+      if (dif === 0) return;
 
-    await addDoc(collection(db, 'produtos'), {
-      nome: novoNome.toUpperCase(),
-      valorUnitario: Number(novoValor) || 0,
-      minimo: Number(novoMinimo) || 3,
-      unidade: novaUnidade,
-      qtdEstoque: 0
-    });
+      const prod = produtos.find((p) => p.id === produtoId);
+      const novoAjuste = {
+        tipo: dif > 0 ? "entrada" : "saida",
+        produtoId,
+        quantidade: Math.abs(dif),
+        valorUnitario: prod ? prod.valorUnitario : 0,
+        data: todayISO(),
+        formaPagamento: "-",
+        cliente: "-",
+        fornecedor: "Ajuste de Estoque",
+      };
 
-    setNovoNome('');
-    setNovoValor('');
-    alert("Produto cadastrado!");
-  };
-
-  const valorTotalEstoque = produtos.reduce((acc, p) => acc + ((p.qtdEstoque || 0) * (p.valorUnitario || 0)), 0);
-  const totalItens = produtos.reduce((acc, p) => acc + (p.qtdEstoque || 0), 0);
-  const produtosAlerta = produtos.filter(p => (p.qtdEstoque || 0) <= (p.minimo || 3));
+      await addMovimentacao(novoAjuste);
+      showToast("Estoque atualizado no Firebase!");
+    },
+    [estoques, produtos, addMovimentacao, showToast]
+  );
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-emerald-900 text-white flex flex-col items-center justify-center p-4">
-        <Droplet className="w-12 h-12 animate-bounce text-emerald-300 mb-2" />
-        <p className="text-lg font-medium">Conectando ao Firebase...</p>
+      <div style={styles.loadingScreen}>
+        <Droplets size={32} color={C.greenHeader} style={{ animation: "spin 1.4s linear infinite" }} />
+        <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
+        <span style={{ marginTop: 12, fontFamily: FONT_BODY, color: C.textDark, fontWeight: 600 }}>
+          Conectando ao Firebase...
+        </span>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#f7f9f6] text-gray-800 pb-20">
-      {/* TOPO */}
-      <header className="bg-[#14532d] text-white p-4 shadow-md">
-        <div className="max-w-md mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Droplet className="w-8 h-8 text-emerald-300" />
-            <div>
-              <h1 className="text-lg font-black tracking-wider uppercase">CONTROLE DE ESTOQUE</h1>
-              <p className="text-[11px] text-emerald-200 font-medium">Herbicidas & Defensivos (Nuvem Firebase)</p>
-            </div>
-          </div>
-          {produtosAlerta.length > 0 && (
-            <div className="bg-[#78350f]/80 text-amber-200 px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1 border border-amber-600/50">
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
-              <span>{produtosAlerta.length}</span>
-            </div>
-          )}
-        </div>
-      </header>
+    <div style={styles.app}>
+      <GlobalFonts />
+      <Header alertCount={alertas.length} />
 
-      <main className="max-w-md mx-auto p-4 space-y-4">
-        {/* CARDS RESUMO */}
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex justify-between items-center">
-          <div>
-            <p className="text-[11px] font-extrabold text-gray-500 uppercase tracking-wide">VALOR EM ESTOQUE</p>
-            <p className="text-xl font-black text-[#14532d] mt-0.5">{fmtBRL(valorTotalEstoque)}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-[11px] font-extrabold text-gray-500 uppercase tracking-wide">TOTAL DE ITENS</p>
-            <p className="text-xl font-black text-[#c2410c] mt-0.5">{totalItens} <span className="text-xs font-normal text-gray-500">itens</span></p>
-          </div>
-        </div>
-
-        {/* CAIXA DE ALERTA DE REPOSIÇÃO */}
-        {produtosAlerta.length > 0 && (
-          <div className="bg-[#fff7ed] border border-[#ea580c] rounded-xl p-3 shadow-sm flex items-start gap-3">
-            <AlertTriangle className="w-6 h-6 text-[#ea580c] shrink-0 mt-1" />
-            <div>
-              <p className="text-xs font-black text-[#c2410c]">
-                ⚠️ Por favor, repor estoque dos produtos destacados abaixo!
-              </p>
-              <p className="text-[11px] text-[#9a3412] mt-0.5">
-                Existe(m) <strong>{produtosAlerta.length} produto(s)</strong> com 3 unidades ou menos.
-              </p>
-            </div>
-          </div>
+      <div style={styles.content}>
+        {tab === "estoque" && (
+          <EstoqueView
+            produtos={produtos}
+            estoques={estoques}
+            alertas={alertas}
+            onAjustarEstoque={handleAjustarEstoque}
+          />
         )}
-
-        {/* ABA ESTOQUE */}
-        {activeTab === 'estoque' && (
-          <div className="space-y-3">
-            <h2 className="text-xs font-black text-[#14532d] uppercase tracking-wider">
-              QUANTIDADE EM ESTOQUE (MÍNIMO: 3 UN/PRODUTO)
-            </h2>
-
-            {/* GRID DE CARDS EM 3 COLUNAS */}
-            <div className="grid grid-cols-3 gap-2.5">
-              {produtos.map(p => {
-                const alerta = (p.qtdEstoque || 0) <= (p.minimo || 3);
-                return (
-                  <div 
-                    key={p.id} 
-                    className={`bg-white rounded-xl p-2.5 shadow-sm border flex flex-col justify-between relative min-h-[170px] ${
-                      alerta ? 'border-[#f97316] bg-[#fff7ed]' : 'border-gray-200'
-                    }`}
-                  >
-                    {/* BOTAO EDITAR */}
-                    <button 
-                      onClick={() => { setProdSel(p.id); setActiveTab('movimentar'); }}
-                      className="absolute top-1.5 right-1.5 w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 hover:text-gray-800"
-                    >
-                      <Pencil className="w-3 h-3" />
-                    </button>
-
-                    {/* TEXTO REPOR ESTOQUE SE ABAIXO DO MINIMO */}
-                    <div>
-                      {alerta && (
-                        <p className="text-[9px] font-black text-[#c2410c] uppercase tracking-tighter flex items-center gap-0.5 leading-none mb-1">
-                          ⚠️ REPOR ESTOQUE
-                        </p>
-                      )}
-                      <div className="text-center mt-1">
-                        <span className={`text-2xl font-black ${alerta ? 'text-[#ea580c]' : 'text-[#15803d]'}`}>
-                          {p.qtdEstoque || 0}
-                        </span>
-                        <span className="text-[10px] font-bold text-gray-500 ml-0.5">{p.unidade}</span>
-                      </div>
-                    </div>
-
-                    {/* DESENHO DO GALÃO / RECIPIENTE */}
-                    <div className="my-2 flex justify-center">
-                      <div className={`w-10 h-12 rounded-lg border-2 flex items-end justify-center overflow-hidden relative ${
-                        alerta ? 'border-gray-300 bg-emerald-50' : 'border-[#15803d] bg-emerald-100'
-                      }`}>
-                        <div 
-                          className={`w-full transition-all duration-500 ${alerta ? 'bg-emerald-200' : 'bg-[#15803d]'}`} 
-                          style={{ height: `${Math.min(100, ((p.qtdEstoque || 0) / 20) * 100)}%` }} 
-                        />
-                        <div className="absolute top-1 w-4 h-1 border-b border-dashed border-gray-400" />
-                      </div>
-                    </div>
-
-                    {/* NOME E MINIMO */}
-                    <div className="text-center">
-                      <h3 className="font-extrabold text-gray-800 text-xs leading-tight truncate">{p.nome}</h3>
-                      <p className={`text-[10px] font-bold mt-0.5 ${alerta ? 'text-[#c2410c]' : 'text-gray-400'}`}>
-                        mín: {p.minimo || 3} {p.unidade}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+        {tab === "mover" && (
+          <MovimentarView
+            produtos={produtos}
+            estoques={estoques}
+            addMovimentacao={addMovimentacao}
+            showToast={showToast}
+          />
         )}
-
-        {/* ABA MOVIMENTAR */}
-        {activeTab === 'movimentar' && (
-          <form onSubmit={handleMovimentar} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 space-y-4">
-            <h2 className="font-bold text-gray-700">Registrar Entrada / Saída</h2>
-            <div>
-              <label className="block text-xs font-bold text-gray-500 mb-1">Produto</label>
-              <select 
-                value={prodSel} 
-                onChange={e => setProdSel(e.target.value)} 
-                className="w-full p-2.5 border rounded-lg bg-gray-50 text-sm font-medium"
-                required
-              >
-                <option value="">Selecione um produto...</option>
-                {produtos.map(p => (
-                  <option key={p.id} value={p.id}>{p.nome} (Atual: {p.qtdEstoque || 0} {p.unidade})</option>
-                ))}
-              </select>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setTipoMov('SAIDA')}
-                className={`p-2.5 rounded-lg font-bold text-xs flex items-center justify-center gap-1 border ${tipoMov === 'SAIDA' ? 'bg-red-50 text-red-600 border-red-200' : 'bg-gray-50 text-gray-500'}`}
-              >
-                <MinusCircle className="w-4 h-4" /> Saída
-              </button>
-              <button
-                type="button"
-                onClick={() => setTipoMov('ENTRADA')}
-                className={`p-2.5 rounded-lg font-bold text-xs flex items-center justify-center gap-1 border ${tipoMov === 'ENTRADA' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-gray-50 text-gray-500'}`}
-              >
-                <PlusCircle className="w-4 h-4" /> Entrada
-              </button>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-500 mb-1">Quantidade</label>
-              <input 
-                type="number" 
-                value={qtdMov} 
-                onChange={e => setQtdMov(e.target.value)} 
-                placeholder="Ex: 5" 
-                className="w-full p-2.5 border rounded-lg bg-gray-50 text-sm"
-                required 
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-500 mb-1">Observação (Opcional)</label>
-              <input 
-                type="text" 
-                value={obsMov} 
-                onChange={e => setObsMov(e.target.value)} 
-                placeholder="Ex: Aplicação Talhão 2" 
-                className="w-full p-2.5 border rounded-lg bg-gray-50 text-sm"
-              />
-            </div>
-            <button type="submit" className="w-full bg-[#15803d] text-white font-bold py-3 rounded-lg text-sm shadow">
-              Confirmar Movimentação
-            </button>
-          </form>
+        {tab === "relatorios" && (
+          <RelatoriosView produtos={produtos} movs={movs} showToast={showToast} />
         )}
-
-        {/* ABA PRODUTOS */}
-        {activeTab === 'produtos' && (
-          <form onSubmit={handleAddProduto} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 space-y-4">
-            <h2 className="font-bold text-gray-700">Cadastrar Novo Produto</h2>
-            <div>
-              <label className="block text-xs font-bold text-gray-500 mb-1">Nome do Produto</label>
-              <input 
-                type="text" 
-                value={novoNome} 
-                onChange={e => setNovoNome(e.target.value)} 
-                placeholder="Ex: GLIFOSATO" 
-                className="w-full p-2.5 border rounded-lg bg-gray-50 text-sm"
-                required 
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-xs font-bold text-gray-500 mb-1">Valor Unitário (R$)</label>
-                <input 
-                  type="number" 
-                  value={novoValor} 
-                  onChange={e => setNovoValor(e.target.value)} 
-                  placeholder="Ex: 45" 
-                  className="w-full p-2.5 border rounded-lg bg-gray-50 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 mb-1">Unidade</label>
-                <select 
-                  value={novaUnidade} 
-                  onChange={e => setNovaUnidade(e.target.value)} 
-                  className="w-full p-2.5 border rounded-lg bg-gray-50 text-sm"
-                >
-                  <option value="L">Litro (L)</option>
-                  <option value="Kg">Quilo (Kg)</option>
-                  <option value="gl">Galão (gl)</option>
-                  <option value="UN">Unidade (UN)</option>
-                </select>
-              </div>
-            </div>
-            <button type="submit" className="w-full bg-[#15803d] text-white font-bold py-3 rounded-lg text-sm shadow">
-              Salvar Produto
-            </button>
-          </form>
+        {tab === "produtos" && (
+          <ProdutosView
+            produtos={produtos}
+            estoques={estoques}
+            saveProduto={saveProduto}
+            removeProduto={removeProduto}
+            onAjustarEstoque={handleAjustarEstoque}
+            showToast={showToast}
+          />
         )}
-
-        {/* ABA HISTÓRICO */}
-        {activeTab === 'historico' && (
-          <div className="space-y-2">
-            <h2 className="text-sm font-bold text-gray-600 uppercase">Últimas Movimentações</h2>
-            {historico.length === 0 ? (
-              <p className="text-xs text-gray-400 text-center py-6">Nenhuma movimentação registrada.</p>
-            ) : (
-              historico.map(h => (
-                <div key={h.id} className="bg-white p-3 rounded-lg shadow-sm border border-gray-200 flex justify-between items-center text-xs">
-                  <div>
-                    <span className={`font-bold px-1.5 py-0.5 rounded text-[10px] mr-2 ${h.tipo === 'ENTRADA' ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>
-                      {h.tipo}
-                    </span>
-                    <strong className="text-gray-800">{h.produtoNome}</strong>
-                    {h.observacao && <p className="text-gray-400 mt-0.5">{h.observacao}</p>}
-                  </div>
-                  <div className="text-right font-bold text-gray-700">
-                    {h.tipo === 'ENTRADA' ? '+' : '-'}{h.quantidade} {h.unidade}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+        {tab === "historico" && (
+          <HistoricoView produtos={produtos} movs={movs} removeMovimentacao={removeMovimentacao} showToast={showToast} />
         )}
-      </main>
+      </div>
 
-      {/* MENU INFERIOR */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around p-2 max-w-md mx-auto shadow-lg z-50">
-        <button onClick={() => setActiveTab('estoque')} className={`flex flex-col items-center gap-1 ${activeTab === 'estoque' ? 'text-[#15803d] font-bold' : 'text-gray-400'}`}>
-          <Package className="w-5 h-5" />
-          <span className="text-[10px]">Estoque</span>
-        </button>
-        <button onClick={() => setActiveTab('movimentar')} className={`flex flex-col items-center gap-1 ${activeTab === 'movimentar' ? 'text-[#15803d] font-bold' : 'text-gray-400'}`}>
-          <TrendingUp className="w-5 h-5" />
-          <span className="text-[10px]">Movimentar</span>
-        </button>
-        <button onClick={() => setActiveTab('relatorios')} className={`flex flex-col items-center gap-1 ${activeTab === 'relatorios' ? 'text-[#15803d] font-bold' : 'text-gray-400'}`}>
-          <FileText className="w-5 h-5" />
-          <span className="text-[10px]">Relatórios</span>
-        </button>
-        <button onClick={() => setActiveTab('produtos')} className={`flex flex-col items-center gap-1 ${activeTab === 'produtos' ? 'text-[#15803d] font-bold' : 'text-gray-400'}`}>
-          <PlusCircle className="w-5 h-5" />
-          <span className="text-[10px]">Produtos</span>
-        </button>
-        <button onClick={() => setActiveTab('historico')} className={`flex flex-col items-center gap-1 ${activeTab === 'historico' ? 'text-[#15803d] font-bold' : 'text-gray-400'}`}>
-          <History className="w-5 h-5" />
-          <span className="text-[10px]">Histórico</span>
-        </button>
-      </nav>
+      <TabBar tab={tab} setTab={setTab} alertCount={alertas.length} />
+
+      {toast && <div style={styles.toast}>{toast}</div>}
     </div>
   );
 }
+
+const FONT_DISPLAY = "'Oswald', sans-serif";
+const FONT_BODY = "'IBM Plex Sans', sans-serif";
+const FONT_MONO = "'JetBrains Mono', monospace";
+
+function GlobalFonts() {
+  return (
+    <>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap"
+      />
+      <style>{`
+        @keyframes blinkAlert {
+          0% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.4; transform: scale(0.98); }
+          100% { opacity: 1; transform: scale(1); }
+        }
+        .blinking-alert {
+          animation: blinkAlert 1.2s infinite ease-in-out;
+        }
+      `}</style>
+    </>
+  );
+}
+
+function Header({ alertCount }) {
+  return (
+    <div style={styles.header} className="no-print">
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <Droplets size={26} color="#FFFFFF" />
+        <div>
+          <div style={styles.headerTitle}>CONTROLE DE ESTOQUE</div>
+          <div style={styles.headerSub}>Herbicidas &amp; Defensivos (Nuvem Firebase)</div>
+        </div>
+      </div>
+      {alertCount > 0 && (
+        <div style={styles.headerAlert} className="blinking-alert">
+          <TriangleAlert size={14} color="#FFFFFF" />
+          <span>{alertCount}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TabBar({ tab, setTab, alertCount }) {
+  const items = [
+    { id: "estoque", label: "Estoque", icon: Gauge },
+    { id: "mover", label: "Movimentar", icon: ArrowUpFromLine },
+    { id: "relatorios", label: "Relatórios", icon: FileText },
+    { id: "produtos", label: "Produtos", icon: PackagePlus },
+    { id: "historico", label: "Histórico", icon: ListOrdered },
+  ];
+  return (
+    <div style={styles.tabBar} className="no-print">
+      {items.map((it) => {
+        const Icon = it.icon;
+        const active = tab === it.id;
+        return (
+          <button
+            key={it.id}
+            onClick={() => setTab(it.id)}
+            style={{
+              ...styles.tabBtn,
+              color: active ? C.greenHeader : C.textMuted,
+              borderTop: active ? `3px solid ${C.orangeAlert}` : "3px solid transparent",
+            }}
+          >
+            <div style={{ position: "relative" }}>
+              <Icon size={20} strokeWidth={active ? 2.5 : 1.8} />
+              {it.id === "estoque" && alertCount > 0 && <span style={styles.tabDot} className="blinking-alert" />}
+            </div>
+            <span style={{ fontSize: 11, fontFamily: FONT_BODY, fontWeight: active ? 700 : 500 }}>
+              {it.label}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function EstoqueView({ produtos, estoques, alertas, onAjustarEstoque }) {
+  const valorTotal = produtos.reduce(
+    (acc, p) => acc + (estoques[p.id] || 0) * p.valorUnitario,
+    0
+  );
+
+  const qtdTotalGeral = produtos.reduce(
+    (acc, p) => acc + (estoques[p.id] || 0),
+    0
+  );
+
+  return (
+    <div style={{ padding: "14px 16px 20px" }}>
+      <div style={styles.summaryCard}>
+        <div>
+          <div style={styles.summaryLabel}>VALOR EM ESTOQUE</div>
+          <div style={styles.summaryValue}>{fmtBRL(valorTotal)}</div>
+        </div>
+        <div style={styles.summaryDivider} />
+        <div>
+          <div style={styles.summaryLabel}>TOTAL DE ITENS</div>
+          <div style={{ ...styles.summaryValue, color: C.orangeAlert }}>
+            {qtdTotalGeral} <span style={{ fontSize: 12, color: C.textMuted }}>itens</span>
+          </div>
+        </div>
+      </div>
+
+      {alertas.length > 0 && (
+        <div style={styles.alertBanner} className="blinking-alert">
+          <TriangleAlert size={22} color={C.orangeAlert} style={{ flexShrink: 0 }} />
+          <div>
+            <div style={{ fontWeight: 700, color: C.orangeAlert, fontSize: 13.5 }}>
+              ⚠️ Por favor, repor estoque dos produtos destacados abaixo!
+            </div>
+            <div style={{ fontSize: 12, color: C.textDark, marginTop: 2 }}>
+              Existe(m) <b>{alertas.length} produto(s)</b> com 3 unidades ou menos.
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div style={{ fontFamily: FONT_DISPLAY, fontSize: 14, letterSpacing: 1.2, color: C.greenHeader, margin: "18px 2px 10px", fontWeight: 700 }}>
+        QUANTIDADE EM ESTOQUE (MÍNIMO: 3 UN/PRODUTO)
+      </div>
+
+      <div style={styles.gaugeGrid}>
+        {produtos.map((p) => (
+          <Gauge_
+            key={p.id}
+            produto={p}
+            qtd={estoques[p.id] || 0}
+            onAjustarEstoque={onAjustarEstoque}
+          />
+        ))}
+      </div>
+
+      {produtos.length === 0 && (
+        <EmptyState text="Nenhum produto cadastrado ainda. Vá em Produtos para adicionar." />
+      )}
+    </div>
+  );
+}
+
+function Gauge_({ produto, qtd, onAjustarEstoque }) {
+  const [editing, setEditing] = useState(false);
+  const [newQtd, setNewQtd] = useState(String(qtd));
+
+  useEffect(() => {
+    setNewQtd(String(qtd));
+  }, [qtd]);
+
+  const min = produto.minimo ?? 3;
+  const un = produto.unidade || "un";
+  const low = qtd <= min;
+  const ceiling = Math.max(min * 2, min + 1, 1);
+  const pct = Math.max(0, Math.min(100, (qtd / ceiling) * 100));
+  const fillColor = low ? C.orangeAlert : C.greenHeader;
+
+  function handleSave() {
+    const val = parseFloat(newQtd);
+    if (!isNaN(val) && val >= 0) {
+      onAjustarEstoque(produto.id, val);
+    }
+    setEditing(false);
+  }
+
+  return (
+    <div style={{ ...styles.gaugeCard, borderColor: low ? C.orangeAlert : C.line, background: low ? C.orangeSoft : C.surface }}>
+      {low && (
+        <div style={{ fontSize: 9.5, color: C.orangeAlert, fontWeight: 700, marginBottom: 4, textAlign: "center", lineHeight: 1.1 }} className="blinking-alert">
+          ⚠️ REPOR ESTOQUE
+        </div>
+      )}
+
+      <button
+        onClick={() => setEditing(!editing)}
+        style={styles.editBadgeBtn}
+        title="Editar quantidade"
+      >
+        {editing ? <X size={12} color={C.textDark} /> : <Pencil size={12} color={C.greenHeader} />}
+      </button>
+
+      <div style={{ margin: "4px 0 8px", textAlign: "center" }}>
+        {editing ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <input
+              type="number"
+              value={newQtd}
+              onChange={(e) => setNewQtd(e.target.value)}
+              style={styles.gaugeInput}
+              autoFocus
+            />
+            <button onClick={handleSave} style={styles.gaugeSaveBtn}>
+              <Check size={12} color="#FFFFFF" />
+            </button>
+          </div>
+        ) : (
+          <div>
+            <span style={{ fontFamily: FONT_MONO, fontSize: 24, fontWeight: 700, color: low ? C.orangeAlert : C.greenHeader }}>
+              {qtd}
+            </span>
+            <span style={{ fontFamily: FONT_BODY, fontSize: 11, color: C.textMuted, marginLeft: 2, fontWeight: 600 }}>{un}</span>
+          </div>
+        )}
+      </div>
+
+      <div style={styles.gaugeTube}>
+        <div style={{ ...styles.gaugeFill, height: `${pct}%`, background: fillColor }} />
+        <div style={{ ...styles.gaugeMinLine, bottom: "50%" }} />
+      </div>
+
+      <div style={styles.gaugeLabel}>{produto.nome}</div>
+      <div style={{ fontFamily: FONT_MONO, fontSize: 10, color: low ? C.orangeAlert : C.textMuted, marginTop: 2, fontWeight: 600 }}>
+        mín: {min} {un}
+      </div>
+    </div>
+  );
+}
+
+function MovimentarView({ produtos, estoques, addMovimentacao, showToast }) {
+  const [tipo, setTipo] = useState("entrada");
+  const [produtoId, setProdutoId] = useState(produtos[0]?.id || "");
+  const [buscaProduto, setBuscaProduto] = useState("");
+  const [quantidade, setQuantidade] = useState("");
+  const [valorUnitario, setValorUnitario] = useState("");
+  const [data, setData] = useState(todayISO());
+  const [formaPagamento, setFormaPagamento] = useState("Pix");
+  const [cliente, setCliente] = useState("");
+  const [fornecedor, setFornecedor] = useState("");
+
+  const produtosFiltrados = useMemo(() => {
+    if (!buscaProduto.trim()) return produtos;
+    return produtos.filter((p) =>
+      p.nome.toLowerCase().includes(buscaProduto.toLowerCase())
+    );
+  }, [produtos, buscaProduto]);
+
+  useEffect(() => {
+    if (!produtoId && produtos[0]) setProdutoId(produtos[0].id);
+    const prod = produtos.find((p) => p.id === produtoId);
+    if (prod && valorUnitario === "") setValorUnitario(String(prod.valorUnitario));
+  }, [produtos]);
+
+  const prodSel = produtos.find((p) => p.id === produtoId);
+
+  function handleProdutoChange(id) {
+    setProdutoId(id);
+    const prod = produtos.find((p) => p.id === id);
+    if (prod) setValorUnitario(String(prod.valorUnitario));
+  }
+
+  async function handleSubmit() {
+    const qtdNum = parseFloat(quantidade);
+    if (!produtoId) return showToast("Selecione um produto");
+    if (!qtdNum || qtdNum <= 0) return showToast("Informe uma quantidade válida");
+    if (tipo === "saida" && (estoques[produtoId] || 0) < qtdNum) {
+      showToast("Estoque insuficiente para esta saída!");
+      return;
+    }
+    const novo = {
+      tipo,
+      produtoId,
+      quantidade: qtdNum,
+      valorUnitario: parseFloat(valorUnitario) || 0,
+      data,
+      formaPagamento: tipo === "saida" ? formaPagamento : "-",
+      cliente: tipo === "saida" ? (cliente.trim() || "-") : "-",
+      fornecedor: tipo === "entrada" ? (fornecedor.trim() || "-") : "-",
+    };
+
+    await addMovimentacao(novo);
+    showToast(tipo === "entrada" ? "Entrada salva na nuvem!" : "Saída salva na nuvem!");
+    setQuantidade("");
+    setCliente("");
+    setFornecedor("");
+  }
+
+  return (
+    <div style={{ padding: "14px 16px 20px" }}>
+      <div style={styles.segmented}>
+        <button
+          onClick={() => setTipo("entrada")}
+          style={{
+            ...styles.segmentBtn,
+            background: tipo === "entrada" ? C.greenHeader : "transparent",
+            color: tipo === "entrada" ? "#FFFFFF" : C.textMuted,
+          }}
+        >
+          <ArrowDownToLine size={16} />
+          Entrada
+        </button>
+        <button
+          onClick={() => setTipo("saida")}
+          style={{
+            ...styles.segmentBtn,
+            background: tipo === "saida" ? C.orangeAlert : "transparent",
+            color: tipo === "saida" ? "#FFFFFF" : C.textMuted,
+          }}
+        >
+          <ArrowUpFromLine size={16} />
+          Saída
+        </button>
+      </div>
+
+      <div style={styles.formCard}>
+        <Field label="Pesquisar Produto (Lupa)">
+          <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+            <Search size={16} color={C.greenHeader} style={{ position: "absolute", left: 10 }} />
+            <input
+              value={buscaProduto}
+              onChange={(e) => setBuscaProduto(e.target.value)}
+              placeholder="Digite o nome do produto..."
+              style={{ ...styles.input, paddingLeft: 34, fontFamily: FONT_BODY, borderColor: C.greenHeader }}
+            />
+            {buscaProduto && (
+              <button
+                onClick={() => setBuscaProduto("")}
+                style={{ position: "absolute", right: 8, background: "transparent", border: "none", cursor: "pointer" }}
+              >
+                <X size={14} color={C.textMuted} />
+              </button>
+            )}
+          </div>
+        </Field>
+
+        <Field label="Selecione o Produto">
+          <select
+            value={produtoId}
+            onChange={(e) => handleProdutoChange(e.target.value)}
+            style={styles.select}
+          >
+            {produtosFiltrados.length === 0 ? (
+              <option value="">Nenhum produto encontrado</option>
+            ) : (
+              produtosFiltrados.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nome} ({p.unidade || "un"})
+                </option>
+              ))
+            )}
+          </select>
+        </Field>
+
+        {prodSel && (
+          <div style={styles.stockHint}>
+            Estoque disponível: <b style={{ color: C.greenHeader }}>{estoques[produtoId] || 0} {prodSel.unidade || "un"}</b>
+          </div>
+        )}
+
+        <Field label={`Quantidade (${prodSel ? prodSel.unidade || "un" : "un"})`}>
+          <input
+            type="number"
+            inputMode="decimal"
+            value={quantidade}
+            onChange={(e) => setQuantidade(e.target.value)}
+            placeholder="0"
+            style={styles.input}
+          />
+        </Field>
+
+        <Field label="Valor unitário (R$)">
+          <input
+            type="number"
+            inputMode="decimal"
+            value={valorUnitario}
+            onChange={(e) => setValorUnitario(e.target.value)}
+            placeholder="0,00"
+            style={styles.input}
+          />
+        </Field>
+
+        {tipo === "entrada" && (
+          <Field label="Nome do Fornecedor (Opcional)">
+            <input
+              value={fornecedor}
+              onChange={(e) => setFornecedor(e.target.value)}
+              placeholder="Ex: Syngenta / Bayer / Distribuidora X"
+              style={{ ...styles.input, fontFamily: FONT_BODY, borderColor: C.greenHeader }}
+            />
+          </Field>
+        )}
+
+        {tipo === "saida" && (
+          <>
+            <Field label="Forma de Pagamento">
+              <select
+                value={formaPagamento}
+                onChange={(e) => setFormaPagamento(e.target.value)}
+                style={{ ...styles.select, borderColor: C.orangeAlert }}
+              >
+                <option value="Pix">Pix</option>
+                <option value="Boleto">Boleto</option>
+                <option value="Dinheiro à vista">Dinheiro à vista / Espécie</option>
+                <option value="Cartão de Crédito">Cartão de Crédito</option>
+                <option value="Cartão de Débito">Cartão de Débito</option>
+              </select>
+            </Field>
+
+            <Field label="Nome do Cliente (Opcional)">
+              <input
+                value={cliente}
+                onChange={(e) => setCliente(e.target.value)}
+                placeholder="Ex: João da Silva (ou deixe em branco)"
+                style={{ ...styles.input, fontFamily: FONT_BODY }}
+              />
+            </Field>
+          </>
+        )}
+
+        <Field label="Data">
+          <input type="date" value={data} onChange={(e) => setData(e.target.value)} style={styles.input} />
+        </Field>
+
+        {quantidade && valorUnitario && (
+          <div style={styles.totalPreview}>
+            Total: <span style={{ fontFamily: FONT_MONO, fontWeight: 700, color: C.greenHeader }}>{fmtBRL(parseFloat(quantidade) * parseFloat(valorUnitario))}</span>
+          </div>
+        )}
+
+        <button
+          onClick={handleSubmit}
+          style={{
+            ...styles.primaryBtn,
+            background: tipo === "entrada" ? C.greenHeader : C.orangeAlert,
+            color: "#FFFFFF",
+          }}
+        >
+          Registrar {tipo === "entrada" ? "entrada" : "saída"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function RelatoriosView({ produtos, movs, showToast }) {
+  const [periodo, setPeriodo] = useState("mes");
+  const [dataInicio, setDataInicio] = useState(todayISO());
+  const [dataFim, setDataFim] = useState(todayISO());
+
+  const getProd = (id) => produtos.find((p) => p.id === id);
+  const produtoNome = (id) => getProd(id)?.nome || "—";
+  const produtoUn = (id) => getProd(id)?.unidade || "un";
+
+  const movsFiltradas = useMemo(() => {
+    if (!movs) return [];
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+
+    return movs.filter((m) => {
+      if (periodo === "tudo") return true;
+
+      const [y, mMonth, d] = (m.data || "").split("-").map(Number);
+      const dataMov = new Date(y, mMonth - 1, d);
+
+      if (periodo === "hoje") {
+        return dataMov.getTime() === hoje.getTime();
+      }
+
+      if (periodo === "semana") {
+        const seteDiasAtras = new Date(hoje);
+        seteDiasAtras.setDate(hoje.getDate() - 7);
+        return dataMov >= seteDiasAtras;
+      }
+
+      if (periodo === "quinzena") {
+        const quinzenaAtras = new Date(hoje);
+        quinzenaAtras.setDate(hoje.getDate() - 15);
+        return dataMov >= quinzenaAtras;
+      }
+
+      if (periodo === "mes") {
+        return dataMov.getMonth() === hoje.getMonth() && dataMov.getFullYear() === hoje.getFullYear();
+      }
+
+      if (periodo === "custom") {
+        const [yI, mI, dI] = dataInicio.split("-").map(Number);
+        const [yF, mF, dF] = dataFim.split("-").map(Number);
+        const start = new Date(yI, mI - 1, dI);
+        const end = new Date(yF, mF - 1, dF, 23, 59, 59);
+        return dataMov >= start && dataMov <= end;
+      }
+
+      return true;
+    });
+  }, [movs, periodo, dataInicio, dataFim]);
+
+  const resumoPorProduto = useMemo(() => {
+    const mapa = {};
+    produtos.forEach((p) => {
+      mapa[p.id] = { nome: p.nome, unidade: p.unidade || "un", entradaQtd: 0, entradaVal: 0, saidaQtd: 0, saidaVal: 0 };
+    });
+
+    movsFiltradas.forEach((m) => {
+      if (!mapa[m.produtoId]) {
+        mapa[m.produtoId] = { nome: produtoNome(m.produtoId), unidade: produtoUn(m.produtoId), entradaQtd: 0, entradaVal: 0, saidaQtd: 0, saidaVal: 0 };
+      }
+      const val = Number(m.quantidade) * Number(m.valorUnitario);
+      if (m.tipo === "entrada") {
+        mapa[m.produtoId].entradaQtd += Number(m.quantidade);
+        mapa[m.produtoId].entradaVal += val;
+      } else {
+        mapa[m.produtoId].saidaQtd += Number(m.quantidade);
+        mapa[m.produtoId].saidaVal += val;
+      }
+    });
+
+    return Object.values(mapa).filter((item) => item.entradaQtd > 0 || item.saidaQtd > 0);
+  }, [movsFiltradas, produtos]);
+
+  const totaisPeriodo = useMemo(() => {
+    let valEntradas = 0;
+    let valSaidas = 0;
+
+    movsFiltradas.forEach((m) => {
+      const valor = Number(m.quantidade) * Number(m.valorUnitario);
+      if (m.tipo === "entrada") {
+        valEntradas += valor;
+      } else {
+        valSaidas += valor;
+      }
+    });
+
+    return { valEntradas, valSaidas };
+  }, [movsFiltradas]);
+
+  function exportarWhatsApp() {
+    if (movsFiltradas.length === 0) return showToast("Nenhum dado para compartilhar");
+
+    const rotuloPeriodo = {
+      hoje: "Hoje",
+      semana: "Últimos 7 dias",
+      quinzena: "Últimos 15 dias",
+      mes: "Este Mês",
+      custom: `${fmtDate(dataInicio)} a ${fmtDate(dataFim)}`,
+      tudo: "Geral Completo",
+    }[periodo] || periodo;
+
+    let text = `*📊 RELATÓRIO DE ESTOQUE - DEFENSIVOS*\n`;
+    text += `🗓️ *Período:* ${rotuloPeriodo}\n`;
+    text += `📅 *Gerado em:* ${fmtDate(todayISO())}\n\n`;
+
+    text += `*💵 RESUMO FINANCEIRO:*\n`;
+    text += `🟢 *Entradas:* ${fmtBRL(totaisPeriodo.valEntradas)}\n`;
+    text += `🔴 *Saídas:* ${fmtBRL(totaisPeriodo.valSaidas)}\n\n`;
+
+    text += `*📦 DISCRIMINAÇÃO POR PRODUTO:*\n`;
+    resumoPorProduto.forEach((item) => {
+      text += `▪️ *${item.nome}*:\n`;
+      if (item.entradaQtd > 0) text += `   🟢 Entrou: ${item.entradaQtd} ${item.unidade} (${fmtBRL(item.entradaVal)})\n`;
+      if (item.saidaQtd > 0) text += `   🔴 Saiu: ${item.saidaQtd} ${item.unidade} (${fmtBRL(item.saidaVal)})\n`;
+    });
+
+    const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+    window.open(url, "_blank");
+  }
+
+  function exportarExcel() {
+    if (movsFiltradas.length === 0) return showToast("Nenhum dado para exportar");
+
+    let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
+    csvContent += "Data;Tipo;Produto;Quantidade;Unidade;Valor Unitario (R$);Total (R$);Pagamento;Cliente;Fornecedor\n";
+
+    movsFiltradas.forEach((m) => {
+      const total = (Number(m.quantidade) * Number(m.valorUnitario)).toFixed(2);
+      const row = `${fmtDate(m.data)};${m.tipo.toUpperCase()};${produtoNome(m.produtoId)};${m.quantidade};${produtoUn(m.produtoId)};${Number(m.valorUnitario).toFixed(2)};${total};${m.formaPagamento || "-"};${m.cliente || "-"};${m.fornecedor || "-"}`;
+      csvContent += row + "\n";
+    });
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `relatorio_estoque_${periodo}_${todayISO()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast("Excel (CSV) baixado!");
+  }
+
+  function exportarPDF() {
+    if (movsFiltradas.length === 0) return showToast("Nenhum dado para imprimir");
+    window.print();
+  }
+
+  return (
+    <div style={{ padding: "14px 16px 20px" }}>
+      <style>{`
+        @media print {
+          body { background: #ffffff !important; color: #000000 !important; font-family: Arial, sans-serif !important; }
+          .no-print { display: none !important; }
+          .print-only { display: block !important; }
+          
+          .pdf-header { text-align: center; border-bottom: 2px solid #1e5e2f; padding-bottom: 10px; margin-bottom: 20px; }
+          .pdf-title { font-size: 22px; font-weight: bold; color: #1e5e2f; margin: 0; }
+          .pdf-sub { font-size: 13px; color: #555; margin-top: 5px; }
+
+          .pdf-section-title { font-size: 15px; font-weight: bold; color: #1e5e2f; background: #e8efe9; padding: 6px 10px; border-left: 4px solid #1e5e2f; margin-top: 20px; margin-bottom: 10px; page-break-after: avoid; }
+
+          .print-table { width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 20px; }
+          .print-table th, .print-table td { border: 1px solid #cccccc; padding: 8px 10px; font-size: 12px; text-align: left; }
+          .print-table th { background: #f2f5f2; color: #1e5e2f; font-weight: bold; }
+
+          .pdf-card { border: 1px solid #d0d7d1; border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; page-break-inside: avoid; background: #fafafa; }
+          .pdf-card-header { display: flex; justify-content: space-between; border-bottom: 1px solid #e0e0e0; padding-bottom: 4px; margin-bottom: 6px; }
+          .pdf-card-title { font-size: 14px; font-weight: bold; color: #1b2e1e; }
+          .pdf-card-badge-entrada { color: #1e5e2f; font-weight: bold; font-size: 12px; }
+          .pdf-card-badge-saida { color: #e65100; font-weight: bold; font-size: 12px; }
+          .pdf-card-body { font-size: 12px; line-height: 1.5; color: #333333; }
+        }
+        @media screen {
+          .print-only { display: none !important; }
+        }
+      `}</style>
+
+      <div className="print-only">
+        <div className="pdf-header">
+          <h1 className="pdf-title">RELATÓRIO DE ESTOQUE E MOVIMENTAÇÃO</h1>
+          <div className="pdf-sub">
+            <b>Período:</b> {periodo === "custom" ? `${fmtDate(dataInicio)} a ${fmtDate(dataFim)}` : periodo.toUpperCase()} | <b>Gerado em:</b> {fmtDate(todayISO())}
+          </div>
+        </div>
+
+        <div className="pdf-section-title">1. RESUMO POR PRODUTO NO PERÍODO</div>
+        <table className="print-table">
+          <thead>
+            <tr>
+              <th>Produto</th>
+              <th>Entradas</th>
+              <th>Entradas (R$)</th>
+              <th>Saídas</th>
+              <th>Saídas (R$)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {resumoPorProduto.map((item, idx) => (
+              <tr key={idx}>
+                <td><b>{item.nome}</b></td>
+                <td style={{ color: "#1e5e2f" }}>{item.entradaQtd} {item.unidade}</td>
+                <td style={{ color: "#1e5e2f" }}>{fmtBRL(item.entradaVal)}</td>
+                <td style={{ color: "#e65100" }}>{item.saidaQtd} {item.unidade}</td>
+                <td style={{ color: "#e65100" }}>{fmtBRL(item.saidaVal)}</td>
+              </tr>
+            ))}
+            <tr style={{ background: "#f9f9f9" }}>
+              <td><b>TOTAL FINANCEIRO</b></td>
+              <td>-</td>
+              <td style={{ color: "#1e5e2f" }}><b>{fmtBRL(totaisPeriodo.valEntradas)}</b></td>
+              <td>-</td>
+              <td style={{ color: "#e65100" }}><b>{fmtBRL(totaisPeriodo.valSaidas)}</b></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div className="pdf-section-title">2. DETALHAMENTO DAS MOVIMENTAÇÕES DADOS COMPLETOS</div>
+        {movsFiltradas.map((m, idx) => {
+          const isEntrada = m.tipo === "entrada";
+          const un = produtoUn(m.produtoId);
+          return (
+            <div key={m.id || idx} className="pdf-card">
+              <div className="pdf-card-header">
+                <span className="pdf-card-title">{idx + 1}. {produtoNome(m.produtoId)}</span>
+                <span className={isEntrada ? "pdf-card-badge-entrada" : "pdf-card-badge-saida"}>
+                  {isEntrada ? "ENTRADA (+)" : "SAÍDA (-)"}
+                </span>
+              </div>
+              <div className="pdf-card-body">
+                <div><b>Data:</b> {fmtDate(m.data)}</div>
+                <div><b>Quantidade:</b> {m.quantidade} {un} | <b>Valor Unitário:</b> {fmtBRL(m.valorUnitario)} | <b>Total:</b> {fmtBRL(m.quantidade * m.valorUnitario)}</div>
+                {isEntrada ? (
+                  <div><b>Fornecedor:</b> {m.fornecedor || "-"}</div>
+                ) : (
+                  <div><b>Forma de Pagamento:</b> {m.formaPagamento || "-"} | <b>Cliente:</b> {m.cliente || "-"}</div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="no-print">
+        <div style={{ fontFamily: FONT_DISPLAY, fontSize: 15, letterSpacing: 1.2, color: C.greenHeader, marginBottom: 12, fontWeight: 700 }}>
+          RELATÓRIO DE MOVIMENTAÇÕES
+        </div>
+
+        <div style={{ ...styles.segmented, flexWrap: "wrap", gap: 4 }}>
+          {["hoje", "semana", "quinzena", "mes", "custom", "tudo"].map((pId) => {
+            const labels = { hoje: "Diário", semana: "Semanal", quinzena: "15 Dias", mes: "Mensal", custom: "Datas", tudo: "Geral" };
+            const active = periodo === pId;
+            return (
+              <button
+                key={pId}
+                onClick={() => setPeriodo(pId)}
+                style={{
+                  ...styles.segmentBtn,
+                  background: active ? C.greenHeader : "transparent",
+                  color: active ? "#FFFFFF" : C.textMuted,
+                  fontSize: 11,
+                  padding: "7px 0",
+                  fontWeight: active ? 700 : 500,
+                }}
+              >
+                {labels[pId]}
+              </button>
+            );
+          })}
+        </div>
+
+        {periodo === "custom" && (
+          <div style={{ ...styles.formCard, padding: 10, display: "flex", gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <div style={styles.fieldLabel}>De:</div>
+              <input type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} style={styles.input} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={styles.fieldLabel}>Até:</div>
+              <input type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} style={styles.input} />
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+          <div style={{ ...styles.summaryCard, padding: "12px", flexDirection: "column", alignItems: "flex-start", background: C.greenSoft, borderColor: C.line }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.greenHeader, fontSize: 11, fontWeight: 700 }}>
+              <ArrowDownToLine size={15} /> ENTRADAS
+            </div>
+            <div style={{ fontFamily: FONT_MONO, fontSize: 16, fontWeight: 700, color: C.greenHeader, marginTop: 4 }}>
+              {fmtBRL(totaisPeriodo.valEntradas)}
+            </div>
+          </div>
+
+          <div style={{ ...styles.summaryCard, padding: "12px", flexDirection: "column", alignItems: "flex-start", background: C.orangeSoft, borderColor: "#FFE0B2" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.orangeAlert, fontSize: 11, fontWeight: 700 }}>
+              <ArrowUpFromLine size={15} /> SAÍDAS
+            </div>
+            <div style={{ fontFamily: FONT_MONO, fontSize: 16, fontWeight: 700, color: C.orangeAlert, marginTop: 4 }}>
+              {fmtBRL(totaisPeriodo.valSaidas)}
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={exportarWhatsApp}
+          style={{
+            width: "100%",
+            background: C.whatsappGreen,
+            color: "#FFFFFF",
+            border: "none",
+            borderRadius: 8,
+            padding: "12px 0",
+            fontFamily: FONT_BODY,
+            fontWeight: 700,
+            fontSize: 14,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            cursor: "pointer",
+            marginBottom: 12,
+            boxShadow: "0 2px 8px rgba(37,211,102,0.3)",
+          }}
+        >
+          <MessageCircle size={18} color="#FFFFFF" /> Enviar Relatório via WhatsApp
+        </button>
+
+        {resumoPorProduto.length > 0 && (
+          <div style={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: 10, padding: 12, marginBottom: 14 }}>
+            <div style={{ fontFamily: FONT_DISPLAY, fontSize: 13, color: C.greenHeader, marginBottom: 8, letterSpacing: 1, fontWeight: 700 }}>
+              DISCRIMINAÇÃO POR PRODUTO ({periodo.toUpperCase()})
+            </div>
+            {resumoPorProduto.map((item, idx) => (
+              <div key={idx} style={{ borderBottom: `1px dashed ${C.line}`, padding: "6px 0", fontSize: 12.5 }}>
+                <div style={{ fontWeight: 700, color: C.textDark }}>{item.nome}</div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontFamily: FONT_MONO, fontSize: 11, marginTop: 3 }}>
+                  <span style={{ color: C.greenHeader, fontWeight: 600 }}>Entradas: {item.entradaQtd} {item.unidade} ({fmtBRL(item.entradaVal)})</span>
+                  <span style={{ color: C.orangeAlert, fontWeight: 600 }}>Saídas: {item.saidaQtd} {item.unidade} ({fmtBRL(item.saidaVal)})</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          <button onClick={exportarExcel} style={{ ...styles.primaryBtn, background: C.surface, border: `1px solid ${C.line}`, color: C.textDark, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            <Download size={16} color={C.greenHeader} /> Excel (CSV)
+          </button>
+          <button onClick={exportarPDF} style={{ ...styles.primaryBtn, background: C.orangeAlert, color: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            <Printer size={16} color="#FFFFFF" /> Gerar PDF
+          </button>
+        </div>
+
+        <div style={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: 10, padding: 12 }}>
+          <div style={{ fontFamily: FONT_DISPLAY, fontSize: 13, color: C.textMuted, marginBottom: 10, fontWeight: 700 }}>
+            DETALHAMENTO DIA A DIA ({movsFiltradas.length})
+          </div>
+
+          {movsFiltradas.length === 0 && (
+            <EmptyState text="Nenhuma movimentação registrada neste período." />
+          )}
+
+          {movsFiltradas.map((m) => {
+            const isEntrada = m.tipo === "entrada";
+            const un = produtoUn(m.produtoId);
+            return (
+              <div key={m.id} style={{ borderBottom: `1px solid ${C.line}`, padding: "10px 0" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div>
+                    <div style={{ fontFamily: FONT_BODY, fontWeight: 700, fontSize: 14, color: C.textDark }}>
+                      {produtoNome(m.produtoId)}
+                    </div>
+                    <div style={{ fontFamily: FONT_MONO, fontSize: 11.5, color: C.textMuted, marginTop: 2 }}>
+                      {fmtDate(m.data)} · <span style={{ color: isEntrada ? C.greenHeader : C.orangeAlert, fontWeight: 700 }}>{m.tipo.toUpperCase()}</span>
+                    </div>
+                    {isEntrada && m.fornecedor && m.fornecedor !== "-" && (
+                      <div style={{ fontFamily: FONT_BODY, fontSize: 11.5, color: C.greenHeader, marginTop: 2, fontWeight: 600 }}>
+                        Fornecedor: <b>{m.fornecedor}</b>
+                      </div>
+                    )}
+                    {!isEntrada && (
+                      <div style={{ fontFamily: FONT_BODY, fontSize: 11.5, color: C.orangeAlert, marginTop: 2, fontWeight: 600 }}>
+                        Pagamento: <b>{m.formaPagamento || "-"}</b> {m.cliente && m.cliente !== "-" ? `| Cliente: ${m.cliente}` : ""}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontFamily: FONT_MONO, fontWeight: 700, fontSize: 14, color: isEntrada ? C.greenHeader : C.orangeAlert }}>
+                      {isEntrada ? "+" : "-"}{m.quantidade} {un}
+                    </div>
+                    <div style={{ fontFamily: FONT_MONO, fontSize: 11.5, color: C.textMuted, marginTop: 2 }}>
+                      {fmtBRL(m.quantidade * m.valorUnitario)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={styles.fieldLabel}>{label}</div>
+      {children}
+    </div>
+  );
+}
+
+function ProdutosView({ produtos, estoques, saveProduto, removeProduto, onAjustarEstoque, showToast }) {
+  const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState(null);
+  const [nome, setNome] = useState("");
+  const [valor, setValor] = useState("");
+  const [minimo, setMinimo] = useState("3");
+  const [unidade, setUnidade] = useState("L");
+  const [estoqueAtual, setEstoqueAtual] = useState("");
+
+  function resetForm() {
+    setNome("");
+    setValor("");
+    setMinimo("3");
+    setUnidade("L");
+    setEstoqueAtual("");
+    setEditId(null);
+    setShowForm(false);
+  }
+
+  function handleEditClick(produto) {
+    setEditId(produto.id);
+    setNome(produto.nome);
+    setValor(String(produto.valorUnitario));
+    setMinimo(String(produto.minimo ?? 3));
+    setUnidade(produto.unidade || "L");
+    setEstoqueAtual(String(estoques[produto.id] || 0));
+    setShowForm(true);
+  }
+
+  async function handleSaveProduto() {
+    if (!nome.trim()) return showToast("Informe o nome do produto");
+
+    const pData = {
+      nome: nome.trim().toUpperCase(),
+      valorUnitario: parseFloat(valor) || 0,
+      minimo: parseFloat(minimo) || 3,
+      unidade: unidade || "un",
+    };
+
+    await saveProduto(pData, editId);
+
+    if (estoqueAtual !== "") {
+      const valNum = parseFloat(estoqueAtual);
+      if (!isNaN(valNum) && valNum >= 0) {
+        await onAjustarEstoque(editId || pData.nome, valNum);
+      }
+    }
+
+    resetForm();
+  }
+
+  return (
+    <div style={{ padding: "14px 16px 20px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <div style={{ fontFamily: FONT_DISPLAY, fontSize: 14, letterSpacing: 1.2, color: C.greenHeader, fontWeight: 700 }}>
+          CATÁLOGO DE PRODUTOS
+        </div>
+        <button
+          onClick={() => {
+            if (showForm) {
+              resetForm();
+            } else {
+              setShowForm(true);
+            }
+          }}
+          style={styles.addBtn}
+        >
+          {showForm ? <X size={18} /> : <Plus size={18} />}
+        </button>
+      </div>
+
+      {showForm && (
+        <div style={styles.formCard}>
+          <div style={{ fontFamily: FONT_DISPLAY, fontSize: 13, letterSpacing: 1, color: C.greenHeader, marginBottom: 10, fontWeight: 700 }}>
+            {editId ? "EDITAR PRODUTO" : "NOVO PRODUTO"}
+          </div>
+          <Field label="Nome do produto">
+            <input value={nome} onChange={(e) => setNome(e.target.value)} style={styles.input} placeholder="Ex: GLIFOSATO" />
+          </Field>
+          <Field label="Unidade de Medida">
+            <select value={unidade} onChange={(e) => setUnidade(e.target.value)} style={styles.select}>
+              <option value="L">Litros (L)</option>
+              <option value="Kg">Quilogramas (Kg)</option>
+              <option value="gl">Galões (gl)</option>
+              <option value="un">Unidades (un)</option>
+              <option value="cx">Caixas (cx)</option>
+              <option value="sc">Sacos (sc)</option>
+              <option value="fr">Frascos (fr)</option>
+            </select>
+          </Field>
+          <Field label="Valor unitário (R$)">
+            <input type="number" inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)} style={styles.input} placeholder="0,00" />
+          </Field>
+          <Field label="Estoque mínimo (Alerta - Padrão: 3)">
+            <input type="number" inputMode="decimal" value={minimo} onChange={(e) => setMinimo(e.target.value)} style={styles.input} placeholder="3" />
+          </Field>
+          <Field label="Estoque Atual (Qtd em Mãos)">
+            <input type="number" inputMode="decimal" value={estoqueAtual} onChange={(e) => setEstoqueAtual(e.target.value)} style={{ ...styles.input, borderColor: C.greenHeader }} placeholder="0" />
+          </Field>
+          <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+            <button onClick={handleSaveProduto} style={{ ...styles.primaryBtn, background: C.greenHeader, color: "#FFFFFF" }}>
+              {editId ? "Salvar alterações" : "Salvar produto"}
+            </button>
+            {editId && (
+              <button onClick={resetForm} style={{ ...styles.primaryBtn, background: C.surfaceRaised, color: C.textDark }}>
+                Cancelar
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div>
+        {produtos.map((p) => (
+          <div key={p.id} style={styles.productRow}>
+            <div>
+              <div style={{ fontFamily: FONT_BODY, fontWeight: 700, color: C.textDark, fontSize: 15 }}>{p.nome}</div>
+              <div style={{ fontFamily: FONT_MONO, fontSize: 12, color: C.textMuted, marginTop: 2 }}>
+                {fmtBRL(p.valorUnitario)} · mín {p.minimo ?? 3} {p.unidade || "un"}
+              </div>
+              <div style={{ fontFamily: FONT_MONO, fontSize: 12, color: C.greenHeader, marginTop: 2, fontWeight: 700 }}>
+                Estoque Atual: <b>{estoques[p.id] || 0} {p.unidade || "un"}</b>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button onClick={() => handleEditClick(p)} style={styles.iconBtn} title="Editar produto">
+                <Pencil size={18} color={C.greenHeader} />
+              </button>
+              <button onClick={() => removeProduto(p.id)} style={styles.iconBtn} title="Excluir produto">
+                <Trash2 size={18} color={C.orangeAlert} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {produtos.length === 0 && !showForm && (
+        <EmptyState text="Nenhum produto cadastrado. Toque em + para adicionar." />
+      )}
+    </div>
+  );
+}
+
+function HistoricoView({ produtos, movs, removeMovimentacao, showToast }) {
+  const getProd = (id) => produtos.find((p) => p.id === id);
+  const produtoNome = (id) => getProd(id)?.nome || "—";
+  const produtoUn = (id) => getProd(id)?.unidade || "un";
+
+  return (
+    <div style={{ padding: "14px 16px 20px" }}>
+      <div style={{ fontFamily: FONT_DISPLAY, fontSize: 14, letterSpacing: 1.2, color: C.greenHeader, marginBottom: 10, fontWeight: 700 }}>
+        REGISTRO DE MOVIMENTAÇÕES
+      </div>
+
+      {movs.length === 0 && <EmptyState text="Nenhuma movimentação registrada no banco." />}
+
+      {movs.map((m) => {
+        const isEntrada = m.tipo === "entrada";
+        const un = produtoUn(m.produtoId);
+        return (
+          <div key={m.id} style={styles.historyRow}>
+            <div
+              style={{
+                ...styles.historyIcon,
+                background: isEntrada ? C.greenSoft : C.orangeSoft,
+              }}
+            >
+              {isEntrada ? <ArrowDownToLine size={16} color={C.greenHeader} /> : <ArrowUpFromLine size={16} color={C.orangeAlert} />}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontFamily: FONT_BODY, fontWeight: 700, fontSize: 14, color: C.textDark }}>
+                {produtoNome(m.produtoId)}
+              </div>
+              <div style={{ fontFamily: FONT_MONO, fontSize: 11.5, color: C.textMuted, marginTop: 2 }}>
+                {fmtDate(m.data)} · {isEntrada ? "+" : "-"}{m.quantidade} {un} · {fmtBRL(m.quantidade * m.valorUnitario)}
+              </div>
+              {isEntrada && m.fornecedor && m.fornecedor !== "-" && (
+                <div style={{ fontFamily: FONT_BODY, fontSize: 11.5, color: C.greenHeader, marginTop: 2, fontWeight: 600 }}>
+                  Fornecedor: <b>{m.fornecedor}</b>
+                </div>
+              )}
+              {!isEntrada && (
+                <div style={{ fontFamily: FONT_BODY, fontSize: 11.5, color: C.orangeAlert, marginTop: 2, fontWeight: 600 }}>
+                  Pagamento: <b>{m.formaPagamento || "-"}</b> {m.cliente && m.cliente !== "-" ? `| Cliente: ${m.cliente}` : ""}
+                </div>
+              )}
+            </div>
+            <button onClick={() => removeMovimentacao(m.id)} style={styles.iconBtn}>
+              <Trash2 size={16} color={C.textMuted} />
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function EmptyState({ text }) {
+  return (
+    <div style={styles.emptyState}>
+      <Droplets size={26} color={C.line} />
+      <div style={{ fontFamily: FONT_BODY, fontSize: 13, color: C.textMuted, marginTop: 8, textAlign: "center", fontWeight: 500 }}>
+        {text}
+      </div>
+    </div>
+  );
+}
+
+const styles = {
+  app: {
+    fontFamily: FONT_BODY,
+    background: C.bg,
+    minHeight: "100vh",
+    maxWidth: 480,
+    margin: "0 auto",
+    display: "flex",
+    flexDirection: "column",
+    color: C.textDark,
+  },
+  loadingScreen: {
+    minHeight: "100vh",
+    background: C.bg,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  header: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "16px 16px 14px",
+    background: C.greenHeader,
+    color: "#FFFFFF",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+  },
+  headerTitle: {
+    fontFamily: FONT_DISPLAY,
+    fontSize: 18,
+    letterSpacing: 1,
+    fontWeight: 700,
+    color: "#FFFFFF",
+  },
+  headerSub: {
+    fontFamily: FONT_BODY,
+    fontSize: 12,
+    color: "#E8EFE9",
+    marginTop: 1,
+  },
+  headerAlert: {
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+    background: C.orangeAlert,
+    borderRadius: 20,
+    padding: "4px 10px",
+    fontFamily: FONT_MONO,
+    fontSize: 12,
+    color: "#FFFFFF",
+    fontWeight: 700,
+  },
+  content: {
+    flex: 1,
+    overflowY: "auto",
+  },
+  tabBar: {
+    display: "flex",
+    borderTop: `1px solid ${C.line}`,
+    background: C.surface,
+    position: "sticky",
+    bottom: 0,
+    boxShadow: "0 -2px 10px rgba(0,0,0,0.05)",
+  },
+  tabBtn: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 2,
+    padding: "8px 0 6px",
+    background: "transparent",
+    border: "none",
+    cursor: "pointer",
+  },
+  tabDot: {
+    position: "absolute",
+    top: -2,
+    right: -4,
+    width: 8,
+    height: 8,
+    borderRadius: "50%",
+    background: C.orangeAlert,
+  },
+  summaryCard: {
+    display: "flex",
+    alignItems: "center",
+    background: C.surface,
+    border: `1px solid ${C.line}`,
+    borderRadius: 10,
+    padding: "14px 18px",
+    boxShadow: "0 2px 5px rgba(0,0,0,0.03)",
+  },
+  summaryLabel: {
+    fontFamily: FONT_BODY,
+    fontSize: 11,
+    letterSpacing: 0.5,
+    color: C.textMuted,
+    fontWeight: 700,
+  },
+  summaryValue: {
+    fontFamily: FONT_MONO,
+    fontSize: 20,
+    fontWeight: 700,
+    color: C.greenHeader,
+    marginTop: 3,
+  },
+  summaryDivider: {
+    width: 1,
+    height: 36,
+    background: C.line,
+    margin: "0 20px",
+  },
+  alertBanner: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 12,
+    background: C.orangeSoft,
+    border: `1.5px solid ${C.orangeAlert}`,
+    borderRadius: 8,
+    padding: "11px 13px",
+    fontFamily: FONT_BODY,
+    fontSize: 13,
+    color: C.textDark,
+  },
+  gaugeGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, 1fr)",
+    gap: 10,
+  },
+  gaugeCard: {
+    position: "relative",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    background: C.surface,
+    border: `1px solid ${C.line}`,
+    borderRadius: 10,
+    padding: "12px 6px 10px",
+    boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
+  },
+  editBadgeBtn: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    background: C.surfaceRaised,
+    border: `1px solid ${C.line}`,
+    borderRadius: "50%",
+    width: 24,
+    height: 24,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    zIndex: 10,
+  },
+  gaugeTube: {
+    position: "relative",
+    width: 32,
+    height: 60,
+    borderRadius: 6,
+    background: "#E8EFE9",
+    border: `1px solid ${C.line}`,
+    overflow: "hidden",
+    display: "flex",
+    alignItems: "flex-end",
+  },
+  gaugeFill: {
+    width: "100%",
+    transition: "height 0.4s ease",
+  },
+  gaugeMinLine: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    height: 1,
+    background: "rgba(0,0,0,0.3)",
+    borderTop: `1px dashed rgba(0,0,0,0.4)`,
+  },
+  gaugeInput: {
+    width: 40,
+    textAlign: "center",
+    background: C.surface,
+    border: `1px solid ${C.greenHeader}`,
+    borderRadius: 4,
+    color: C.textDark,
+    fontFamily: FONT_MONO,
+    fontSize: 14,
+    padding: "2px 0",
+    fontWeight: 700,
+  },
+  gaugeSaveBtn: {
+    background: C.greenHeader,
+    border: "none",
+    borderRadius: 3,
+    padding: "4px 6px",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  gaugeLabel: {
+    fontFamily: FONT_BODY,
+    fontWeight: 700,
+    fontSize: 12,
+    color: C.textDark,
+    marginTop: 8,
+    textAlign: "center",
+    lineHeight: 1.2,
+  },
+  segmented: {
+    display: "flex",
+    background: C.surface,
+    border: `1px solid ${C.line}`,
+    borderRadius: 10,
+    padding: 4,
+    gap: 4,
+    marginBottom: 14,
+  },
+  segmentBtn: {
+    flex: 1,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    padding: "9px 0",
+    borderRadius: 7,
+    border: "none",
+    fontFamily: FONT_BODY,
+    fontWeight: 700,
+    fontSize: 13,
+    cursor: "pointer",
+  },
+  formCard: {
+    background: C.surface,
+    border: `1px solid ${C.line}`,
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 14,
+    boxShadow: "0 2px 5px rgba(0,0,0,0.02)",
+  },
+  fieldLabel: {
+    fontFamily: FONT_BODY,
+    fontSize: 12,
+    color: C.textMuted,
+    marginBottom: 5,
+    fontWeight: 700,
+  },
+  select: {
+    width: "100%",
+    background: C.bg,
+    border: `1px solid ${C.line}`,
+    borderRadius: 7,
+    padding: "10px 10px",
+    color: C.textDark,
+    fontFamily: FONT_BODY,
+    fontSize: 14,
+    fontWeight: 600,
+    boxSizing: "border-box",
+  },
+  input: {
+    width: "100%",
+    background: C.bg,
+    border: `1px solid ${C.line}`,
+    borderRadius: 7,
+    padding: "10px 10px",
+    color: C.textDark,
+    fontFamily: FONT_MONO,
+    fontSize: 14,
+    fontWeight: 600,
+    boxSizing: "border-box",
+  },
+  stockHint: {
+    fontFamily: FONT_BODY,
+    fontSize: 12.5,
+    color: C.textMuted,
+    marginBottom: 12,
+    fontWeight: 500,
+  },
+  totalPreview: {
+    fontFamily: FONT_BODY,
+    fontSize: 14,
+    color: C.textDark,
+    marginBottom: 12,
+    fontWeight: 600,
+  },
+  primaryBtn: {
+    flex: 1,
+    border: "none",
+    borderRadius: 8,
+    padding: "12px 0",
+    fontFamily: FONT_DISPLAY,
+    fontSize: 15,
+    letterSpacing: 0.5,
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+  addBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    border: `1px solid ${C.line}`,
+    background: C.surface,
+    color: C.greenHeader,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+  },
+  productRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    background: C.surface,
+    border: `1px solid ${C.line}`,
+    borderRadius: 9,
+    padding: "12px 14px",
+    marginBottom: 8,
+  },
+  iconBtn: {
+    background: "transparent",
+    border: "none",
+    cursor: "pointer",
+    padding: 6,
+  },
+  historyRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    background: C.surface,
+    border: `1px solid ${C.line}`,
+    borderRadius: 9,
+    padding: "11px 13px",
+    marginBottom: 8,
+  },
+  historyIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 7,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  emptyState: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    padding: "40px 20px",
+  },
+  toast: {
+    position: "fixed",
+    bottom: 78,
+    left: "50%",
+    transform: "translateX(-50%)",
+    background: C.greenHeader,
+    border: `1px solid ${C.line}`,
+    color: "#FFFFFF",
+    fontFamily: FONT_BODY,
+    fontSize: 13,
+    fontWeight: 600,
+    padding: "10px 18px",
+    borderRadius: 20,
+    boxShadow: "0 6px 20px rgba(0,0,0,0.15)",
+    zIndex: 50,
+  },
+};
