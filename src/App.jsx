@@ -152,18 +152,30 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#f7f9f6] text-gray-800 pb-20">
+      {/* ESTILO DA ANIMAÇÃO DE ALERTA PISCANDO */}
+      <style>{`
+        @keyframes blinkAlert {
+          0% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.5; transform: scale(0.98); }
+          100% { opacity: 1; transform: scale(1); }
+        }
+        .blinking-alert {
+          animation: blinkAlert 1.2s infinite ease-in-out;
+        }
+      `}</style>
+
       {/* TOPO */}
       <header className="bg-[#14532d] text-white p-4 shadow-md">
         <div className="max-w-md mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Droplet className="w-8 h-8 text-emerald-300" />
             <div>
-              <h1 className="text-lg font-black tracking-wider uppercase">CONTROLE DE ESTOQUE</h1>
+              <h1 className="text-lg font-black tracking-wider uppercase">RELATÓRIOS HERBICIDA AGROBRAZ</h1>
               <p className="text-[11px] text-emerald-200 font-medium">Herbicidas & Defensivos (Nuvem Firebase)</p>
             </div>
           </div>
           {produtosAlerta.length > 0 && (
-            <div className="bg-[#78350f]/80 text-amber-200 px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1 border border-amber-600/50">
+            <div className="bg-[#78350f] text-amber-200 px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1 border border-amber-500 blinking-alert">
               <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
               <span>{produtosAlerta.length}</span>
             </div>
@@ -186,13 +198,13 @@ export default function App() {
 
         {/* CAIXA DE ALERTA DE REPOSIÇÃO */}
         {produtosAlerta.length > 0 && (
-          <div className="bg-[#fff7ed] border border-[#ea580c] rounded-xl p-3 shadow-sm flex items-start gap-3">
-            <AlertTriangle className="w-6 h-6 text-[#ea580c] shrink-0 mt-1" />
+          <div className="bg-[#fff3e0] border-2 border-[#e65100] rounded-xl p-3 shadow-sm flex items-start gap-3 blinking-alert">
+            <AlertTriangle className="w-6 h-6 text-[#e65100] shrink-0 mt-0.5" />
             <div>
-              <p className="text-xs font-black text-[#c2410c]">
+              <p className="text-xs font-black text-[#e65100] uppercase">
                 ⚠️ Por favor, repor estoque dos produtos destacados abaixo!
               </p>
-              <p className="text-[11px] text-[#9a3412] mt-0.5">
+              <p className="text-[11px] text-[#9a3412] mt-0.5 font-semibold">
                 Existe(m) <strong>{produtosAlerta.length} produto(s)</strong> com 3 unidades ou menos.
               </p>
             </div>
@@ -213,27 +225,27 @@ export default function App() {
                 return (
                   <div 
                     key={p.id} 
-                    className={`bg-white rounded-xl p-2.5 shadow-sm border flex flex-col justify-between relative min-h-[170px] ${
-                      alerta ? 'border-[#f97316] bg-[#fff7ed]' : 'border-gray-200'
+                    className={`bg-white rounded-xl p-2.5 shadow-sm border flex flex-col justify-between relative min-h-[175px] ${
+                      alerta ? 'border-[#e65100] bg-[#fff3e0]' : 'border-gray-200'
                     }`}
                   >
                     {/* BOTAO EDITAR */}
                     <button 
                       onClick={() => { setProdSel(p.id); setActiveTab('movimentar'); }}
-                      className="absolute top-1.5 right-1.5 w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 hover:text-gray-800"
+                      className="absolute top-1.5 right-1.5 w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 hover:text-gray-800 shadow-xs"
                     >
-                      <Pencil className="w-3 h-3" />
+                      <Pencil className="w-3 h-3 text-[#14532d]" />
                     </button>
 
                     {/* TEXTO REPOR ESTOQUE SE ABAIXO DO MINIMO */}
                     <div>
                       {alerta && (
-                        <p className="text-[9px] font-black text-[#c2410c] uppercase tracking-tighter flex items-center gap-0.5 leading-none mb-1">
+                        <p className="text-[9px] font-black text-[#e65100] uppercase tracking-tighter flex items-center justify-center gap-0.5 leading-none mb-1 blinking-alert">
                           ⚠️ REPOR ESTOQUE
                         </p>
                       )}
                       <div className="text-center mt-1">
-                        <span className={`text-2xl font-black ${alerta ? 'text-[#ea580c]' : 'text-[#15803d]'}`}>
+                        <span className={`text-2xl font-black ${alerta ? 'text-[#e65100]' : 'text-[#15803d]'}`}>
                           {p.qtdEstoque || 0}
                         </span>
                         <span className="text-[10px] font-bold text-gray-500 ml-0.5">{p.unidade}</span>
@@ -243,11 +255,11 @@ export default function App() {
                     {/* DESENHO DO GALÃO / RECIPIENTE */}
                     <div className="my-2 flex justify-center">
                       <div className={`w-10 h-12 rounded-lg border-2 flex items-end justify-center overflow-hidden relative ${
-                        alerta ? 'border-gray-300 bg-emerald-50' : 'border-[#15803d] bg-emerald-100'
+                        alerta ? 'border-amber-300 bg-amber-50' : 'border-[#15803d] bg-emerald-50'
                       }`}>
                         <div 
-                          className={`w-full transition-all duration-500 ${alerta ? 'bg-emerald-200' : 'bg-[#15803d]'}`} 
-                          style={{ height: `${Math.min(100, ((p.qtdEstoque || 0) / 20) * 100)}%` }} 
+                          className={`w-full transition-all duration-500 ${alerta ? 'bg-[#e65100]' : 'bg-[#15803d]'}`} 
+                          style={{ height: `${Math.max(5, Math.min(100, ((p.qtdEstoque || 0) / 20) * 100))}%` }} 
                         />
                         <div className="absolute top-1 w-4 h-1 border-b border-dashed border-gray-400" />
                       </div>
@@ -256,7 +268,7 @@ export default function App() {
                     {/* NOME E MINIMO */}
                     <div className="text-center">
                       <h3 className="font-extrabold text-gray-800 text-xs leading-tight truncate">{p.nome}</h3>
-                      <p className={`text-[10px] font-bold mt-0.5 ${alerta ? 'text-[#c2410c]' : 'text-gray-400'}`}>
+                      <p className={`text-[10px] font-bold mt-0.5 ${alerta ? 'text-[#e65100]' : 'text-gray-400'}`}>
                         mín: {p.minimo || 3} {p.unidade}
                       </p>
                     </div>
